@@ -1,0 +1,1 @@
+void MatrixToVector(const float *a1, const float *a2, float *out);
