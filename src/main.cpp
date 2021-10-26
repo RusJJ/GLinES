@@ -1,6 +1,7 @@
 #include "GLES.h"
 #include <dlfcn.h>
 
+#include "wrapped.h"
 #include "gl_buffer.h"
 #include "gl_matrix.h"
 #include "gl_object.h"
@@ -172,15 +173,16 @@ GLINAPI void* EXPORT GLIN_ProcAddr(void* lib, const char* name)
     return dlsym(lib, name);
 }
 
-extern "C" void glClipPlanefQCOM( GLenum plane, const GLdouble * equation);
-
 GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
 {
     GLIN_MAP(glGetString);
     GLIN_ALL(glCompileShader);
     GLIN_ALL(glMapBuffer);
     GLIN_ALL(glDrawBuffer);
+    GLIN_MAP(glColor4f);
+    GLIN_MAP(glColor4sv);
     // Object
+    GLIN_ALL(glColorMaskIndexed);
     GLIN_ALL(glGetInfoLog);
     GLIN_ALL(glDeleteObject);
     GLIN_ALL(glGetObjectParameterfv);
@@ -188,36 +190,32 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
 
     GLIN_MAP(glBegin);
     GLIN_MAP(glEnd);
+    GLIN_MAP(glOrtho);
     GLIN_ALL(glMatrixMode);
-    GLIN_ALL(glOrtho);
+    GLIN_ALL(glBindProgram); // GL4ES
+    GLIN_ALL(glGenPrograms); // GL4ES
+    GLIN_MAP(glVertex3f); // GL4ES
 
-    STUB_ALL(glBindProgram);
-    STUB_ALL(glClipPlane);
-    STUB_ALL(glDeletePrograms);
-    STUB_ALL(glDeleteQueries);
-    STUB_ALL(glGenPrograms);
-    STUB_ALL(glGetCompressedTexImage);
-    STUB_ALL(glGetTexImage);
-    STUB_ALL(glTexCoord2f);
-    STUB_ALL(glPolygonMode);
-    STUB_ALL(glPopAttrib);
-    STUB_ALL(glProgramString);
-    STUB_ALL(glPushAttrib);
-    STUB_ALL(glVertex3f);
-    STUB_ALL(glEnableClientState);
-    STUB_ALL(glDisableClientState);
-    STUB_ALL(glClientActiveTexture);
-    STUB_ALL(glVertexPointer);
-    STUB_ALL(glTexCoordPointer);
-    STUB_ALL(glProgramEnvParameters4fv);
-    STUB_ALL(glColor4sv);
-    STUB_ALL(glColor4f);
-    STUB_ALL(glColorMaskIndexed);
-    STUB_ALL(glEnableIndexed);
-    STUB_ALL(glDisableIndexed);
-    STUB_ALL(glGetBooleanIndexedv);
-    STUB_ALL(glPushClientAttrib);
-    STUB_ALL(glPopClientAttrib);
+    GLIN_ALL(glClipPlane);
+    GLIN_ALL(glDeletePrograms);
+    GLIN_ALL(glGetCompressedTexImage);
+    GLIN_ALL(glGetTexImage);
+    GLIN_ALL(glTexCoord2f);
+    GLIN_ALL(glPolygonMode);
+    GLIN_ALL(glPopAttrib);
+    GLIN_ALL(glPushAttrib);
+    GLIN_ALL(glProgramString);
+    GLIN_ALL(glEnableClientState);
+    GLIN_ALL(glDisableClientState);
+    GLIN_ALL(glClientActiveTexture);
+    GLIN_ALL(glVertexPointer);
+    GLIN_ALL(glTexCoordPointer);
+    GLIN_ALL(glProgramEnvParameters4fv);
+    GLIN_ALL(glEnableIndexed);
+    GLIN_ALL(glDisableIndexed);
+    GLIN_ALL(glGetBooleanIndexedv);
+    GLIN_ALL(glPushClientAttrib);
+    GLIN_ALL(glPopClientAttrib);
 
     #include "ES3_Funcs.inl" // All OpenGLES 3.2 functions
 
