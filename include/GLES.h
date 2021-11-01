@@ -1,8 +1,7 @@
 #ifndef GLIN2GLES_H
 #define GLIN2GLES_H
 
-    #include "GLinES.h"
-
+    #include "GLinES_Config.h"
     #define GL_GLEXT_PROTOTYPES
 
     #include <GLES3/gl3.h>
@@ -17,6 +16,7 @@
 
     #include <string.h>
     #include <stdbool.h>
+    #include <signal.h>
 
     #include "globals.h"
 
@@ -40,8 +40,10 @@
         #define GLINAPI extern "C"
     #else
         #error Sorry, raw C is not supported! Switch to the C++.
-        //#define GLINAPI
+        #define GLINAPI
     #endif
+
+    #define WRAP(a) GLIN_Wrap_##a
 
     extern void *(*pSetGetProcAddr)(const char* name);
 

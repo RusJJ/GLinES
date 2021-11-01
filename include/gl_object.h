@@ -1,6 +1,8 @@
 #include "GLES.h"
 
-void GLIN_Wrap_glGetInfoLog(GLuint obj, GLsizei maxLength, GLsizei *length, GLchar *infoLog);
-void GLIN_Wrap_glDeleteObject(GLuint obj);
-void GLIN_Wrap_glGetObjectParameterfv(GLuint obj, GLenum pname, GLfloat *params);
-void GLIN_Wrap_glGetObjectParameteriv(GLuint obj, GLenum pname, GLint *params);
+void WRAP(glGetInfoLog(GLuint obj, GLsizei maxLength, GLsizei *length, GLchar *infoLog));
+void WRAP(glDeleteObject(GLuint obj));
+void WRAP(glGetObjectParameterfv(GLuint obj, GLenum pname, GLfloat *params));
+void WRAP(glGetObjectParameteriv(GLuint obj, GLenum pname, GLint *params));
+GLboolean WRAP(glIsProgram(GLuint program));
+void WRAP(glProgramString(GLenum target, GLenum format, GLsizei len, const GLvoid *string));

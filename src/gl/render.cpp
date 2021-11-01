@@ -1,75 +1,155 @@
 #include "GLES.h"
 #include "gl_render.h"
+#include "gl_shader_conv.h"
 #include "globals.h"
 
-void GLIN_Wrap_glBegin(GLenum mode)
+void WRAP(glBegin(GLenum mode))
 {
-    DBG("glBegin(0x%X)", mode);
     globals->lastPrimitiveMode = mode;
     globals->render.begin = true;
 }
 
-void GLIN_Wrap_glEnd()
+void WRAP(glEnd())
 {
-    DBG("glEnd");
     globals->render.begin = false;
 }
 
-void GLIN_Wrap_glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha)
+void WRAP(glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha))
 {
-    DBG("glColor4f");
     static vector4_t& clr = globals->render.color;
     clr.x = red;
     clr.y = green;
     clr.z = blue;
-    clr.a = alpha;
+    clr.w = alpha;
 }
 
-#define _1_DIV_255   0.00392156863f
-void GLIN_Wrap_glColor4sv(const GLshort* v)
+#define __1DIV255 0.00392156863f
+void WRAP(glColor4sv(const GLshort* v))
 {
-    DBG("glColor4sv");
     static vector4_t& clr = globals->render.color;
-    clr.x = _1_DIV_255 * v[0];
-    clr.y = _1_DIV_255 * v[1];
-    clr.z = _1_DIV_255 * v[2];
-    clr.a = _1_DIV_255 * v[3];
+    clr.x = __1DIV255 * v[0];
+    clr.y = __1DIV255 * v[1];
+    clr.z = __1DIV255 * v[2];
+    clr.w = __1DIV255 * v[3];
 }
 
-void GLIN_Wrap_glColorMaskIndexed(GLuint framebuffer, GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha)
+static GLuint latestFramebuffer = 0;
+void WRAP(glBindFramebuffer(GLenum target, GLuint framebuffer))
 {
-    DBG("glColorMaskIndexed");
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer); // Any way for GL_DRAW_FRAMEBUFFER ?
+    glBindFramebuffer(target, framebuffer);
+    latestFramebuffer = framebuffer;
+}
+
+// GL4ES
+void WRAP(glColorMaskIndexed(GLuint framebuffer, GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha))
+{
+    static GLint drawFboId = 0, readFboId = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFboId);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFboId);
+    GLenum target = (drawFboId == readFboId)?GL_FRAMEBUFFER:GL_DRAW_FRAMEBUFFER;
+
+    glBindFramebuffer(target, framebuffer);
     glColorMask(red, green, blue, alpha);
-    //glBindFramebuffer(GL_FRAMEBUFFER, oldf);
+    glBindFramebuffer(target, latestFramebuffer);
 }
 
-void GLIN_Wrap_glBindProgram(GLenum target, GLuint program)
+void WRAP(glBindProgram(GLenum target, GLuint program)) 
 {
-    DBG("glBindProgram");
+    program_arb_t* prog = NULL;
+    if(program > 0)
+    {
+        prog = globals->programsARB[program];
+        if(!prog)
+        {
+            prog = new program_arb_t;
+            prog->id = program;
+        }
+    }
+
     switch(target)
     {
         case 0x8620: // GL_VERTEX_PROGRAM_ARB:
+            if(!program)
+            {
+                globals->arb.activeVert = NULL;
+                return;
+            }
+            globals->arb.activeVert = prog;
+            if(!prog->type)
+            {
+                prog->type = target;
+                prog->vertexShader = true;
+                prog->shader = WRAP(glCreateShader(GL_VERTEX_SHADER));
+            }
             break;
 
         case 0x8804: // GL_FRAGMENT_PROGRAM_ARB:
+            if(!program)
+            {
+                globals->arb.activeFrag = NULL;
+                return;
+            }
+            globals->arb.activeFrag = prog;
+            if(!prog->type)
+            {
+                prog->type = target;
+                prog->vertexShader = false;
+                prog->shader = WRAP(glCreateShader(GL_FRAGMENT_SHADER));
+            }
             break;
     }
 }
 
-void GLIN_Wrap_glGenPrograms(GLsizei n, GLuint *programs)
+void WRAP(glGenPrograms(GLsizei n, GLuint *programs))
 {
-    DBG("glGenPrograms");
-    //static int i; int = 0;
-    //programs = new GLuint[n];
-    //while(i < n)
-    //{
-    //    
-    //    ++i;
-    //}
+    static int i; i = 0;
+    programs = new GLuint[n];
+    GLuint freeId = 1;
+    program_arb_t* program;
+    while(i < n)
+    {
+        while(globals->programsARB[freeId] != NULL) ++freeId;
+        program = new program_arb_t;
+        program->id = freeId;
+        globals->programsARB[freeId] = program;
+
+        programs[i] = freeId;
+        ++i;
+    }
 }
 
-void GLIN_Wrap_glVertex3f(GLfloat x, GLfloat y, GLfloat z)
+void WRAP(glDeletePrograms(GLsizei n, const GLuint *programs))
+{
+    static int i; i = 0;
+    program_arb_t* program;
+    while(i < n)
+    {
+        if((program = globals->programsARB[programs[i]]) != NULL)
+        {
+            glDeleteShader(program->shader);
+            delete program;
+            globals->programsARB[programs[i]] = NULL;
+        }
+        ++i;
+    }
+}
+
+void WRAP(glVertex3f(GLfloat x, GLfloat y, GLfloat z))
 {
     DBG("glVertex3f");
+}
+
+void WRAP(glBindTexture(GLenum target, GLuint texture))
+{
+    switch(target)
+    {
+        case 0x0DE0: //GL_TEXTURE_1D:
+        case 0x84F5: //GL_TEXTURE_RECTANGLE_ARB:
+            glBindTexture(GL_TEXTURE_2D, texture);
+            break;
+
+        default:
+            glBindTexture(target, texture);
+            break;
+    }
 }

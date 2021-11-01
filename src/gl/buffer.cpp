@@ -1,12 +1,11 @@
 #include "gl_buffer.h"
 
-void* GLIN_Wrap_glMapBuffer(GLenum target, GLenum access)
+void* WRAP(glMapBuffer(GLenum target, GLenum access))
 {
-    static GLsizei len = 1;
-    return glMapBufferRange(target, 0, len, access);
+    return glMapBufferRange(target, 0, 1, access);
 }
 
-void GLIN_Wrap_glDrawBuffer(GLenum buf)
+void WRAP(glDrawBuffer(GLenum buf))
 {
     return glDrawBuffers(1, &buf);
 }

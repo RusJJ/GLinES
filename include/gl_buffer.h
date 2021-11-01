@@ -1,4 +1,5 @@
 #include "GLES.h"
 
-void* GLIN_Wrap_glMapBuffer(GLenum target, GLenum access);
-void GLIN_Wrap_glDrawBuffer(GLenum buf);
+void* WRAP(glMapBuffer(GLenum target, GLenum access));
+void WRAP(glDrawBuffer(GLenum buf));
+void WRAP(glCopyBufferSubData(GLenum readTarget, GLenum writeTarget, GLintptr readOffset, GLintptr writeOffset, GLsizeiptr size));

@@ -10,13 +10,14 @@ LOCAL_SRC_FILES := \
 	src/math.cpp \
 	src/wrapped.cpp \
 	src/gl/buffer.cpp \
+	src/gl/matrix.cpp \
 	src/gl/object.cpp \
 	src/gl/render.cpp \
 	src/gl/shader_conv.cpp \
-	src/gl/matrix.cpp
+	src/gl/texture.cpp
 
 LOCAL_CFLAGS += -DDEBUG
-LOCAL_CFLAGS += -O2 -ftree-vectorize -mthumb -mfpu=neon -mcpu=cortex-a9 -mfloat-abi=softfp -pipe
+LOCAL_CFLAGS += -O2 -ftree-vectorize -mthumb -mfpu=neon -mfloat-abi=softfp -pipe
 
 LOCAL_LDLIBS := -llog $(LOCAL_PATH)/libGLESv3_d.so
 
