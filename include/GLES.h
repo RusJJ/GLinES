@@ -20,6 +20,14 @@
 
     #include "globals.h"
 
+// Macro for 32/64 bits
+    #if defined(__aarch64__) || defined(__x86_64__)
+        #define SYS64
+    #else
+        #define SYS32
+    #endif
+
+// LogCat messages
     #ifdef DEBUG
         #include <android/log.h>
         #define DBG(...) __android_log_print(ANDROID_LOG_INFO, "GLinES", __VA_ARGS__)
@@ -28,13 +36,16 @@
         #define DBG(...)
         #define ERR(...)
     #endif
+    #define MSG(...) __android_log_print(ANDROID_LOG_INFO, "GLinES", __VA_ARGS__)
 
+// A visibility of a function
     #ifdef STATIC_LIB
         #define EXPORT
     #else
         #define EXPORT __attribute__((visibility("default")))
     #endif
-    #define EXPORT_ALIAS(__fn_name) __attribute__((alias(#__fn_name)))
+    #define ALIAS(__fn_name) __attribute__((alias(#__fn_name)))
+    #define ALIASWRAP(__fn_name) __attribute__((alias("GLIN_Wrap_" #__fn_name)))
 
     #ifdef __cplusplus
         #define GLINAPI extern "C"

@@ -1,6 +1,5 @@
 void WRAP(glClipPlane(GLenum plane, const GLdouble *equation));
 void WRAP(glGetCompressedTexImage(GLenum target, GLint lod, GLvoid *img));
-void WRAP(glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, GLvoid *pixels));
 void WRAP(glTexCoord2f(GLfloat s, GLfloat t));
 void WRAP(glPolygonMode(GLenum face, GLenum mode));
 void WRAP(glPopAttrib());

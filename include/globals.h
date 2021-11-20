@@ -29,6 +29,13 @@ struct shader_desc_t
     bool vertexShader = false;
 };
 
+struct texture_desc_t
+{
+    GLuint id = 0;
+    unsigned int width;
+    unsigned int height;
+};
+
 struct program_arb_t
 {
     GLuint id = 0;
@@ -42,6 +49,7 @@ struct glstate_t
 {
     bool enabledVertProgARB = false;
     bool enabledFragProgARB = false;
+    texture_desc_t* activeTexture = nullptr;
 };
 
 struct arbstate_t
@@ -63,9 +71,11 @@ struct glin_globals_t
     #ifdef USE_MAP_FOR_SHADERS_DESC
         std::unordered_map<GLuint, shader_desc_t*> shaders;
         std::unordered_map<GLuint, program_arb_t*> programsARB;
+        std::unordered_map<GLuint, shader_desc_t*> textures;
     #else
-        shader_desc_t* shaders[65536] = { 0 };
-        program_arb_t* programsARB[65536] = { 0 };
+        shader_desc_t* shaders[MAX_COUNT_OF_SAVED_SHADERS] = { 0 };
+        program_arb_t* programsARB[MAX_COUNT_OF_SAVED_ARB_PROGS] = { 0 };
+        texture_desc_t* textures[MAX_COUNT_OF_SAVED_TEXTURES] = { 0 };
     #endif // USE_MAP_FOR_SHADERS_DESC
 };
 

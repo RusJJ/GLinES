@@ -8,10 +8,6 @@ void WRAP(glGetCompressedTexImage(GLenum target, GLint lod, GLvoid *img))
 {
     DBG("glGetCompressedTexImage");
 }
-void WRAP(glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, GLvoid *pixels))
-{
-    DBG("glGetTexImage");
-}
 void WRAP(glTexCoord2f(GLfloat s, GLfloat t))
 {
     DBG("glTexCoord2f");
@@ -88,7 +84,7 @@ void WRAP(glGetProgramiv(GLenum target,GLenum pname,GLint *params)) // ARB only
     switch(pname)
     {
         case 0x8627: //GL_PROGRAM_LENGTH_ARB:
-            DBG("glGetProgramiv(GL_PROGRAM_LENGTH_ARB);\nglGetError = 0x%X", glGetError());
+            *params = (prog != NULL && prog->src != NULL) ? strlen(prog->src) : 0;
             break;
 
         case 0x8876: //GL_PROGRAM_FORMAT_ARB:
@@ -96,8 +92,7 @@ void WRAP(glGetProgramiv(GLenum target,GLenum pname,GLint *params)) // ARB only
             break;
 
         case 0x8677: //GL_PROGRAM_BINDING_ARB:
-            if(prog) *params = prog->shader;
-            else *params = 0;
+            *params = (prog != NULL) ? prog->shader : 0;
             break;
 
         case 0x88B4: //GL_MAX_PROGRAM_LOCAL_PARAMETERS_ARB:
@@ -151,9 +146,6 @@ void WRAP(glGetProgramiv(GLenum target,GLenum pname,GLint *params)) // ARB only
         case 0x88B6: //GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB:
             *params = 1;
             break;
-
-        default:
-            ERR("UNKNOWN glGetProgramivARB(0x%X);", pname);
     }
 }
 
@@ -241,5 +233,5 @@ void WRAP(glClearColor(GLclampf r, GLclampf g, GLclampf b, GLclampf a))
 
 void WRAP(glClear(GLbitfield mask))
 {
-    glClear((mask &= GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
+    glClear((mask & (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)));
 }

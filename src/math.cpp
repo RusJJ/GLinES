@@ -1,4 +1,6 @@
-#include <math.h>
+//#define _USE_MATH_DEFINES
+//#include <cmath>
+extern "C" float sqrtf(float _X);
 
 void MatrixToVector(const float *a1, const float *a2, float *out) // GL4ES
 {
@@ -79,7 +81,7 @@ void InverseMatrix(const float *m, float *r) // GL4ES
     r[14] = -m[0]*m[5]*m[14] + m[0]*m[13]*m[6] + m[1]*m[4]*m[14] - m[1]*m[12]*m[6] - m[2]*m[4]*m[13] + m[2]*m[12]*m[5];
     r[15] = m[0]*m[5]*m[10] - m[0]*m[9]*m[6] - m[1]*m[4]*m[10] + m[1]*m[8]*m[6] + m[2]*m[4]*m[9] - m[2]*m[8]*m[5];
 
-    float det = 1.0f/(m[0]*r[0] + m[1]*r[4] + m[2]*r[8] + m[3]*r[12]);
+    float det = 1.0f / (m[0]*r[0] + m[1]*r[4] + m[2]*r[8] + m[3]*r[12]);
     for (int i = 0; i < 16; i++) r[i] *= det;
 }
 
