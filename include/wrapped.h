@@ -26,8 +26,6 @@ void WRAP(glFramebufferRenderbuffer( GLenum target,GLenum attachment,GLenum rend
 GLsync WRAP(glFenceSync(	GLenum condition, GLbitfield flags));
 void WRAP(glGetProgramiv( GLuint program,GLenum pname,GLint *params));
 void WRAP(glGetIntegerv( GLenum pname, GLint * data));
-void WRAP(glBeginQuery( GLenum target, GLuint id));
-void WRAP(glEndQuery( GLenum target));
 GLenum WRAP(glClientWaitSync( GLsync sync,GLbitfield flags,GLuint64 timeout));
 void WRAP(glRenderbufferStorageMultisample( GLenum target,GLsizei samples,GLenum internalformat,GLsizei width,GLsizei height));
 void WRAP(glGenFramebuffers(GLsizei n, GLuint *framebuffers));

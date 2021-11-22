@@ -18,8 +18,6 @@
     #include <stdbool.h>
     #include <signal.h>
 
-    #include "globals.h"
-
 // Macro for 32/64 bits
     #if defined(__aarch64__) || defined(__x86_64__)
         #define SYS64
@@ -28,8 +26,8 @@
     #endif
 
 // LogCat messages
+    #include <android/log.h>
     #ifdef DEBUG
-        #include <android/log.h>
         #define DBG(...) __android_log_print(ANDROID_LOG_INFO, "GLinES", __VA_ARGS__)
         #define ERR(...) __android_log_print(ANDROID_LOG_ERROR, "GLinES", __VA_ARGS__)
     #else
@@ -57,5 +55,7 @@
     #define WRAP(a) GLIN_Wrap_##a
 
     extern void *(*pSetGetProcAddr)(const char* name);
+
+    #include "globals.h"
 
 #endif // GLIN2GLES_H

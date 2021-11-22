@@ -7,6 +7,14 @@
     #include <unordered_map>
 #endif // USE_MAP_FOR_SHADERS_DESC
 
+#include <time.h>
+inline unsigned long long GetClock()
+{
+	static timespec out;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &out);
+	return ((unsigned long long)out.tv_sec)*1000000000LL + out.tv_nsec;
+}
+
 struct vector3_t
 {
     float x, y, z;
@@ -36,6 +44,14 @@ struct texture_desc_t
     unsigned int height;
 };
 
+struct query_desc_t
+{
+    GLuint id;
+    GLenum target;
+    bool active;
+    GLuint start;
+};
+
 struct program_arb_t
 {
     GLuint id = 0;
@@ -50,6 +66,8 @@ struct glstate_t
     bool enabledVertProgARB = false;
     bool enabledFragProgARB = false;
     texture_desc_t* activeTexture = nullptr;
+    GLuint activeQuery = 0;
+    unsigned long long queriesTimeOffset = GetClock();
 };
 
 struct arbstate_t
@@ -62,6 +80,11 @@ struct arbstate_t
 
 struct glin_globals_t
 {
+    glin_globals_t()
+    {
+        MSG("Initializing globals...");
+    }
+
     render_list_t render;
     glstate_t gl;
     arbstate_t arb;
@@ -72,10 +95,12 @@ struct glin_globals_t
         std::unordered_map<GLuint, shader_desc_t*> shaders;
         std::unordered_map<GLuint, program_arb_t*> programsARB;
         std::unordered_map<GLuint, shader_desc_t*> textures;
+        std::unordered_map<GLuint, query_desc_t*> queries;
     #else
         shader_desc_t* shaders[MAX_COUNT_OF_SAVED_SHADERS] = { 0 };
         program_arb_t* programsARB[MAX_COUNT_OF_SAVED_ARB_PROGS] = { 0 };
         texture_desc_t* textures[MAX_COUNT_OF_SAVED_TEXTURES] = { 0 };
+        query_desc_t* queries[MAX_COUNT_OF_SAVED_QUERIES] = { 0 };
     #endif // USE_MAP_FOR_SHADERS_DESC
 };
 

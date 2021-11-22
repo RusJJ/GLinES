@@ -8,7 +8,8 @@
 // @RusJJ: made an inline function. There's no need to always send a function address TO, jump to it, execute and jump back.
 inline unsigned long PackRGBA(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
 {
-    return ((r << 24) | (g << 16) | (b << 8) | a);
+    //return ((r << 24) | (g << 16) | (b << 8) | a);
+    return r | (g << 8) | (b << 16) | (a << 24); // Should be inverted? GL-related?
 }
 
 // void DecompressBlockDXT1(): Decompresses one block of a DXT1 texture and stores the resulting pixels at the appropriate offset in 'image'.

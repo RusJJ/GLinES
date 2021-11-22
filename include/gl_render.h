@@ -11,3 +11,4 @@ void WRAP(glColorMaskIndexed(GLuint framebuffer, GLboolean red, GLboolean green,
 void WRAP(glVertex3f(GLfloat x, GLfloat y, GLfloat z));
 void WRAP(glBindFramebuffer(GLenum target, GLuint framebuffer));
 void WRAP(glBindTexture(GLenum target, GLuint texture));
+void WRAP(glDrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, void *indices, GLint basevertex));

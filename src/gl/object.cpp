@@ -1,5 +1,5 @@
 #include "gl_object.h"
-#include "gl_shader_conv.h"
+#include "gl_shader.h"
 
 void WRAP(glGetInfoLog(GLuint obj, GLsizei maxLength, GLsizei *length, GLchar *infoLog))
 {

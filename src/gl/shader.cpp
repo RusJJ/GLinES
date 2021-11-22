@@ -1,4 +1,4 @@
-#include "gl_shader_conv.h"
+#include "gl_shader.h"
 #include "globals.h"
 
 #include <sstream>
@@ -14,7 +14,7 @@ static const char* GLES_ftransformFn =
     "highp vec4 ftransform(){return GLIN_MVP*GLIN_Vertex;}\n";
 
 static const char* GLES_shadow2DFn = 
-    "vec4 _Sh2D_TMP=vec4(0.0); vec4 shadow2D(sampler2DShadow a,vec3 b){_Sh2D_TMP.x=texture(a,b);return _Sh2D_TMP;}\n";
+    "vec4 _Sh2D_TMP=vec4(0.0);vec4 shadow2D(sampler2DShadow a,vec3 b){_Sh2D_TMP.x=texture(a,b);return _Sh2D_TMP;}\n";
 
 static char pszShaderLog[280];
 void WRAP(glCompileShader(GLuint shader))
@@ -66,13 +66,43 @@ GLuint WRAP(glCreateShader(GLenum type))
     return nShader;
 }
 
+void WRAP(glLinkProgram(GLuint program))
+{
+    glLinkProgram(program);
+
+    GLint isLinked = 0;
+	glGetShaderiv(program, GL_LINK_STATUS, &isLinked);
+    ERR("[LINK] Prog %d linking:", program);
+	if(isLinked == GL_FALSE)
+	{
+        ERR("[LINK] Failed");
+		GLint maxLength = 0;
+		glGetShaderiv(program, GL_INFO_LOG_LENGTH, &maxLength);
+
+		GLchar log[4096];
+		glGetProgramInfoLog( program, sizeof(log), &maxLength, log );
+		if( maxLength )
+		{
+			ERR("[LINK] Linking log:\n%s", log);
+		}
+
+        static GLsizei count; static GLuint shaders[16] = { 0 }; static char i;
+        glGetAttachedShaders(program, 16, &count, shaders);
+        for(i = 0; i < count; ++i)
+        {
+            ERR("[LINK] Shader %d prog %d", shaders[i], program);
+        }
+	}
+    else
+    {
+        ERR("[LINK] Success");
+    }
+}
+
 bool bUsingTextureLODEXT, bUsingTexture3DEXT, bUsingFragDepthEXT,
      bUsesFTransformFn, bUsesShadow2DFn, bUsingFragData, bUsingMultiTexCoord;
 void PreprocessShader(char* pszShaderSource)
 {
-    //bUsingTextureLODEXT =  (strstr(pszShaderSource, "texture2DLod") != NULL     || strstr(pszShaderSource, "texture2DProjLod") != NULL     ||
-    //                        strstr(pszShaderSource, "textureCubeLod") != NULL   || strstr(pszShaderSource, "textureCubeGradARB") != NULL   ||
-    //                        strstr(pszShaderSource, "texture2DGradARB") != NULL || strstr(pszShaderSource, "texture2DProjGradARB") != NULL );
     bUsingTexture3DEXT =   (strstr(pszShaderSource, "sampler3D") != NULL        || strstr(pszShaderSource, "texture3D") != NULL);
     bUsingFragDepthEXT =    strstr(pszShaderSource, "gl_FragDepth") != NULL;
     bUsesFTransformFn =     strstr(pszShaderSource, "ftransform(") != NULL      || strstr(pszShaderSource, "ftransform (") != NULL;
@@ -132,18 +162,18 @@ char* ConvertShader(char* pszShaderSource, bool bIsVertexShader)
     if(!bIsVertexShader)
     {
         if(!bUsingFragData) ADD("layout(location = 0) out vec4 gl_FragColor;\n"); // gl_FragColor = gl_FragData[0] = ...
-        else ADD("layout(location = 0) out vec4 GLIN_FragData[8];\n"); // MAX_DRAW_BUFFERS = 8
+        else ADD("layout(location = 0) out vec4 GLIN_FragData[1];\n");
     }
     else
     {
-        if(bUsingFragData) ADD("layout(location = 0) out vec4 GLIN_FragData[8];\n"); // MAX_DRAW_BUFFERS = 8
+        if(bUsingFragData) ADD("layout(location = 0) out vec4 GLIN_FragData[1];\n");
     }
 
     ADD("out lowp vec4 GLIN_FColor;\n"
         "out lowp vec4 GLIN_BColor;\n"
         "out lowp vec4 GLIN_FSColor;\n"
         "out lowp vec4 GLIN_BSColor;\n"
-        "out mediump vec4  GLIN_TexCoord[32];\n"
+        "out mediump vec4 GLIN_TexCoord[32];\n"
         "out mediump float GLIN_FogFragCoord;\n"
         "vec4 GLIN_ClipVertex;\n"
         "uniform highp mat4 GLIN_MVP;\n");

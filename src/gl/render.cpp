@@ -1,6 +1,6 @@
 #include "GLES.h"
 #include "gl_render.h"
-#include "gl_shader_conv.h"
+#include "gl_shader.h"
 #include "globals.h"
 
 void WRAP(glBegin(GLenum mode))
@@ -72,4 +72,10 @@ void WRAP(glBindTexture(GLenum target, GLuint texture))
             glBindTexture(target, texture);
             break;
     }
+}
+
+void WRAP(glDrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, void *indices, GLint basevertex))
+{
+    if(!basevertex) return glDrawRangeElements(mode, start, end, count, type, indices);
+    glDrawRangeElementsBaseVertex(mode, start, end, count, type, indices, basevertex);
 }

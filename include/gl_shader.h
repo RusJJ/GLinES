@@ -50,7 +50,7 @@
 
 void WRAP(glCompileShader(GLuint shader));
 GLuint WRAP(glCreateShader(GLenum type));
-void WRAP(glUseProgram(GLuint program));
+void WRAP(glLinkProgram(GLuint program));
 
 void PreprocessShader(char* pszShaderSource);
 char* ConvertShader(char* pszShaderSource, bool bIsVertexShader);

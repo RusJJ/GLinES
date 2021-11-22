@@ -13,8 +13,9 @@ LOCAL_SRC_FILES := \
 	src/gl/buffer.cpp \
 	src/gl/matrix.cpp \
 	src/gl/object.cpp \
+	src/gl/queries.cpp \
 	src/gl/render.cpp \
-	src/gl/shader_conv.cpp \
+	src/gl/shader.cpp \
 	src/gl/texture.cpp \
 	thirdparty/Benjamin_Dobell/s3tc.cpp
 

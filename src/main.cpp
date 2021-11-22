@@ -5,8 +5,9 @@
 #include "gl_buffer.h"
 #include "gl_matrix.h"
 #include "gl_object.h"
+#include "gl_queries.h"
 #include "gl_render.h"
-#include "gl_shader_conv.h"
+#include "gl_shader.h"
 #include "gl_texture.h"
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -56,7 +57,7 @@ const GLubyte* WRAP(glGetString(GLenum name))
     switch(name)
     {
         case GL_VERSION:
-            return (GLubyte*)"4.4";
+            return (GLubyte*)"4.4"; // Not enough for 4.5!
 
         case GL_VENDOR:
             return (GLubyte*)"RusJJ aka [-=KILL MAN=-]";
@@ -103,7 +104,19 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glDeleteObject);
     GLIN_ALL(glGetObjectParameterfv);
     GLIN_ALL(glGetObjectParameteriv);
-// Others
+// Queries
+    GLIN_ALL(glGenQueries);
+    GLIN_ALL(glDeleteQueries);
+    GLIN_ALL(glIsQuery);
+    GLIN_ALL(glBeginQuery);
+    GLIN_ALL(glEndQuery);
+    GLIN_ALL(glQueryCounter);
+    GLIN_ALL(glGetQueryiv);
+    GLIN_ALL(glGetQueryObjectiv);
+    GLIN_ALL(glGetQueryObjectuiv);
+    GLIN_MAP(glGetQueryObjecti64v);
+    GLIN_MAP(glGetQueryObjectui64v);
+// Programs
     GLIN_ALL(glGenPrograms); // GL4ES
     GLIN_ALL(glDeletePrograms);
 // Probably complete

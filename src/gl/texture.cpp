@@ -1,7 +1,11 @@
 #include "gl_texture.h"
 #include "gl_render.h"
+#include "maths.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include "thirdparty/Benjamin_Dobell/s3tc.h"
+#include "thirdparty/nothings/stb_image_write.h"
 
 void WRAP(glGenTextures(GLsizei n, GLuint * textures))
 {
@@ -35,11 +39,16 @@ void WRAP(glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei
 {
     DBG("glTexImage2D");
 
+    if(!data) return;
     if(type == GL_HALF_FLOAT) type = GL_HALF_FLOAT_OES;
     else if(type == 0x8367) type = GL_UNSIGNED_BYTE; //GL_UNSIGNED_INT_8_8_8_8_REV
 
     globals->gl.activeTexture->width = width;
     globals->gl.activeTexture->height = height;
+
+    //char _path[64];
+    //sprintf(_path, "/sdcard/srceng2/glines/t%u_l%d.png", globals->gl.activeTexture->id, level);
+    //stbi_write_png(_path, width, height, (format==GL_RGBA||format==GL_RGBA_INTEGER)?4:3, data, width * ((format==GL_RGBA||format==GL_RGBA_INTEGER)?4:3));
 
     switch(format)
     {
@@ -64,7 +73,7 @@ void WRAP(glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei
         case 0x80E1: //GL_BGRA:
         case 0x8D9A: //GL_BGR_INTEGER:
         case 0x8D9B: //GL_BGRA_INTEGER:
-            glTexImage2D(target, level, internalformat, width, height, border, format, type, data);
+            //glTexImage2D(target, level, internalformat, width, height, border, format, type, data);
             break;
     }
 }
@@ -73,11 +82,16 @@ void WRAP(glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffs
 {
     DBG("glTexSubImage2D");
 
+    if(!pixels) return;
     if(type == GL_HALF_FLOAT) type = GL_HALF_FLOAT_OES;
     else if(type == 0x8367) type = GL_UNSIGNED_BYTE; //GL_UNSIGNED_INT_8_8_8_8_REV
 
     globals->gl.activeTexture->width = width - xoffset;
     globals->gl.activeTexture->height = height - yoffset;
+
+    //char _path[64];
+    //sprintf(_path, "/sdcard/srceng2/glines/s%u_l%d.png", globals->gl.activeTexture->id, level);
+    //stbi_write_png(_path, width - xoffset, height - yoffset, (format==GL_RGBA||format==GL_RGBA_INTEGER)?4:3, (const void*)((char*)pixels + 4*(yoffset*width + xoffset)), (width - xoffset) * ((format==GL_RGBA||format==GL_RGBA_INTEGER)?4:3));
 
     switch(format)
     {
@@ -108,8 +122,6 @@ void WRAP(glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffs
 
 void WRAP(glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, GLvoid *pixels))
 {
-    DBG("glGetTexImage");
-
     GLuint fbo; GLint read_fbo = 0, draw_fbo = 0;
 
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &draw_fbo);
@@ -127,9 +139,7 @@ void WRAP(glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, 
 }
 
 void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const GLvoid *data))
-{
-    DBG("glCompressedTexImage2D");
-    
+{    
     if(!data)
     {
         ERR("glCompressedTexImage2D can`t uncompress a texture with zero data!");
@@ -140,39 +150,51 @@ void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum internalform
         ERR("glCompressedTexImage2D can`t uncompress a texture with width and/or height 0!");
         return;
     }
-    if(internalformat == GL_RGBA8) internalformat = 0x83F1; //GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
+    if(internalformat == GL_RGBA8) internalformat = 0x83F1; //GL_COMPRESSED_RGBA_S3TC_DXT1_EXT; // GL4ES hack
 
     globals->gl.activeTexture->width = width;
     globals->gl.activeTexture->height = height;
+
+    //return glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
+
+    bool bIsAlpha = (internalformat==0x8C4D || internalformat==0x83F1 || internalformat==0x83F2 || 
+                     internalformat==0x83F3 || internalformat==0x8C4E || internalformat==0x8C4F);
     
     switch (internalformat)
     {
-        //case 0x8C4C: //GL_COMPRESSED_SRGB_S3TC_DXT1_EXT:
-        //case 0x8C4D: //GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT:
-        //case 0x83F0: //GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
-        //case 0x83F1: //GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
-        //{
-        //    GLvoid* new_data = new char[4 * width * height];
-        //    BlockDecompressImageDXT1(width, height, (unsigned char*)data, (unsigned long*)new_data);
-        //    glTexImage2D(target, level, 4, width, height, border, GL_RGBA, GL_UNSIGNED_BYTE, new_data);
-        //    //delete[] (unsigned long*)new_data;
-        //    break;
-        //}
+        case 0x83F0: //GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
+        case 0x83F1: //GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+        case 0x8C4C: //GL_COMPRESSED_SRGB_S3TC_DXT1_EXT:
+        case 0x8C4D: //GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT:
+        {
+            GLvoid* new_data = new char[4 * width * height];
+            BlockDecompressImageDXT1(width, height, (unsigned char*)data, (unsigned long*)new_data);
+            if(internalformat == 0x8C4C || internalformat == 0x8C4D) ConvertSRGBPixelsToRGB((char*)new_data, width, height);
+            char _path[64];
+            sprintf(_path, "/sdcard/srceng2/glines/c%u_l%d_dxt1.png", globals->gl.activeTexture->id, level);
+            stbi_write_png(_path, width, height, 4, new_data, width * 4);
+            glTexImage2D(target, level, GL_RGBA, width, height, border, GL_RGBA, GL_UNSIGNED_BYTE, new_data);
+            delete[] (char*)new_data;
+            return;
+        }
 
-        //case 0x83F2: //GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
-        //case 0x83F3: //GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
-        //case 0x8C4E: //GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT:
-        //case 0x8C4F: //GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT:
-        //{
-        //    GLvoid* new_data = new char[4 * width * height];
-        //    BlockDecompressImageDXT5(width, height, (unsigned char*)data, (unsigned long*)new_data);
-        //    glTexImage2D(target, level, 4, width, height, border, GL_RGBA, GL_UNSIGNED_BYTE, new_data);
-        //    //delete[] (unsigned long*)new_data;
-        //    break;
-        //}
+        case 0x83F2: //GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
+        case 0x83F3: //GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
+        case 0x8C4E: //GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT:
+        case 0x8C4F: //GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT:
+        {
+            GLvoid* new_data = new char[4 * width * height];
+            BlockDecompressImageDXT5(width, height, (unsigned char*)data, (unsigned long*)new_data);
+            if(internalformat == 0x8C4E || internalformat == 0x8C4F) ConvertSRGBPixelsToRGB((char*)new_data, width, height);
+            //char _path[64];
+            //sprintf(_path, "/sdcard/srceng2/glines/c%u_l%d_dxt5.png", globals->gl.activeTexture->id, level);
+            //stbi_write_png(_path, width, height, 4, new_data, width * 4);
+            glTexImage2D(target, level, GL_RGBA, width, height, border, GL_RGBA, GL_UNSIGNED_BYTE, new_data);
+            delete[] (char*)new_data;
+            return;
+        }
         
         default:
-            glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
-            break;
+            return glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
     }
 }
