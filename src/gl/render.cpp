@@ -79,3 +79,49 @@ void WRAP(glDrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end, G
     if(!basevertex) return glDrawRangeElements(mode, start, end, count, type, indices);
     glDrawRangeElementsBaseVertex(mode, start, end, count, type, indices, basevertex);
 }
+
+void WRAP(glClipPlane(GLenum plane, const GLdouble *equation))
+{
+    //MatrixToVector(, equation, globals->gl.clipPlanes[plane - GL_CLIP_PLANE0]);
+}
+
+void WRAP(glClipPlanef(GLenum plane, const GLfloat *equation))
+{
+    //globals->gl.clipPlanes[plane - GL_CLIP_PLANE0];
+}
+
+GLenum WRAP(glCheckFramebufferStatus(GLenum target))
+{
+    GLenum ret = glCheckFramebufferStatus(target);
+    switch(ret)
+    {
+        case GL_FRAMEBUFFER_COMPLETE:
+            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_COMPLETE", target);
+            break;
+            
+        case GL_FRAMEBUFFER_UNDEFINED:
+            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_UNDEFINED", target);
+            break;
+            
+        case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT", target);
+            break;
+            
+        case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT", target);
+            break;
+            
+        case GL_FRAMEBUFFER_UNSUPPORTED:
+            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_UNSUPPORTED", target);
+            break;
+            
+        case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
+            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE", target);
+            break;
+
+        default:
+            MSG("glCheckFramebufferStatus(0x%X) = UNKNOWN", target);
+            break;
+    }
+    return ret;
+}

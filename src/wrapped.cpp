@@ -1,9 +1,5 @@
 #include "GLES.h"
 
-void WRAP(glClipPlane(GLenum plane, const GLdouble *equation))
-{
-    DBG("glClipPlane");
-}
 void WRAP(glGetCompressedTexImage(GLenum target, GLint lod, GLvoid *img))
 {
     DBG("glGetCompressedTexImage");

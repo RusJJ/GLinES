@@ -85,15 +85,17 @@ GLINAPI void EXPORT GLIN_SetProcAddr(void*(*fn)(const char*))
 
 GLINAPI void* EXPORT GLIN_ProcAddr(void* lib, const char* name)
 {
-    if(pSetGetProcAddr != NULL) return pSetGetProcAddr(name);
-    return dlsym(lib, name);
+    void* ret = NULL;
+    if(pSetGetProcAddr != NULL) ret = pSetGetProcAddr(name);
+    if(ret == NULL) ret = dlsym(lib, name);
+    return ret;
 }
 
 GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
 {
 // Main
     GLIN_MAP(glGetString);
-    GLIN_ALL(glCompileShader);
+    GLIN_ALL(glCompileShader); // REVERT
     GLIN_ALL(glMapBuffer);
     GLIN_ALL(glDrawBuffer);
     GLIN_MAP(glColor4f);
@@ -117,22 +119,24 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glGetQueryObjecti64v);
     GLIN_MAP(glGetQueryObjectui64v);
 // Programs
-    GLIN_ALL(glGenPrograms); // GL4ES
-    GLIN_ALL(glDeletePrograms);
+    GLIN_ARB(glGenPrograms); // GL4ES
+    GLIN_ARB(glDeletePrograms);
 // Probably complete
-    GLIN_ALL(glBindProgram); // GL4ES
-    GLIN_ALL(glProgramString);
-    GLIN_ALL(glGetProgramString);
+    GLIN_MAP(glCompressedTexImage2D); // GL4ES
+    GLIN_ARB(glBindProgram); // GL4ES
+    GLIN_ARB(glProgramString);
+    GLIN_ARB(glGetProgramString);
+    GLIN_ALL(glGetTexImage);
 // Incomplete
     GLIN_ALL(glGetCompressedTexImage);
-    GLIN_ALL(glGetTexImage);
     GLIN_MAP(glBegin);
     GLIN_MAP(glEnd);
     GLIN_MAP(glOrtho);
     GLIN_ALL(glMatrixMode);
     GLIN_MAP(glVertex3f); // GL4ES
+    GLIN_MAP(glClipPlane);
+    GLIN_MAP(glClipPlanef);
 // Not implemented
-    GLIN_ALL(glClipPlane);
     GLIN_ALL(glTexCoord2f);
     GLIN_ALL(glPolygonMode);
     GLIN_ALL(glPopAttrib);

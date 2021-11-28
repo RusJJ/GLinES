@@ -1,5 +1,6 @@
 // There's a lot of functions that are in ES3.2 library! Should i change it in the future to support ES 3.0?
 
+AS_MAP(glBufferStorage, glBufferStorageEXT);
 GL_ALL(glActiveTexture);
 GL_ALL(glAttachShader);
 AS_ALL(glAttachObject, glAttachShader);
@@ -15,15 +16,13 @@ GL_ALL(glBlendFunc);
 GL_ALL(glBlendFuncSeparate);
 GL_ALL(glBufferData);
 GL_ALL(glBufferSubData);
-GL_ALL(glCheckFramebufferStatus);
-GLIN_ALL(glClear);
-GLIN_ALL(glClearColor);
+GLIN_ALL(glCheckFramebufferStatus);
+GL_ALL(glClear); //
+GL_ALL(glClearColor); //
 GL_ALL(glClearDepthf);
 AS_ALL(glClearDepth, glClearDepthf);
 GL_ALL(glClearStencil);
 GL_ALL(glColorMask);
-GL_ALL(glCompileShader);
-GLIN_ALL(glCompressedTexImage2D);
 GL_ALL(glCompressedTexSubImage2D);
 GL_ALL(glCopyTexImage2D);
 GL_ALL(glCopyTexSubImage2D);

@@ -52,7 +52,10 @@
         #define GLINAPI
     #endif
 
+    #define STRINGIFY(a)  __STRINGIFY(a)
+    #define __STRINGIFY(a)  #a
     #define WRAP(a) GLIN_Wrap_##a
+    #define WRAPCALL(a) { MSG("[WRAPCALL-Pre] glGetError() = %d, " #a, glGetError()); a; MSG("[WRAPCALL-Post] glGetError() = %d, " #a, glGetError()); MSG("[WRAPCALL] File " __FILE__ ":" STRINGIFY(__LINE__)); }
 
     extern void *(*pSetGetProcAddr)(const char* name);
 

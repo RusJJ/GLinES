@@ -52,6 +52,6 @@ void WRAP(glCompileShader(GLuint shader));
 GLuint WRAP(glCreateShader(GLenum type));
 void WRAP(glLinkProgram(GLuint program));
 
-void PreprocessShader(char* pszShaderSource);
-char* ConvertShader(char* pszShaderSource, bool bIsVertexShader);
+void PreprocessShader(char* pszShaderSource, bool bIsVertexShader);
+const char* ConvertShader(char* pszShaderSource, bool bIsVertexShader);
 char* ConvertARBShader(char* pszShaderSource, bool bIsVertexShader);

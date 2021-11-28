@@ -25,18 +25,23 @@ struct vector4_t
     float x, y, z, w;
 };
 
+// globals.render
 struct render_list_t
 {
     bool begin = false;
     vector4_t color = {1.0f, 1.0f, 1.0f, 1.0f};
+    GLfloat mvp_matrix[16] = { 0.0f };
+    GLfloat mv_matrix_inv[16] = { 0.0f };
 };
 
+// globals.shaders[*]
 struct shader_desc_t
 {
     GLuint shader = 0;
     bool vertexShader = false;
 };
 
+// globals.textures[*]
 struct texture_desc_t
 {
     GLuint id = 0;
@@ -44,6 +49,7 @@ struct texture_desc_t
     unsigned int height;
 };
 
+// globals.queries[*]
 struct query_desc_t
 {
     GLuint id;
@@ -52,6 +58,7 @@ struct query_desc_t
     GLuint start;
 };
 
+// globals.programsARB[*]
 struct program_arb_t
 {
     GLuint id = 0;
@@ -61,15 +68,18 @@ struct program_arb_t
     bool vertexShader = false;
 };
 
+// globals.gl
 struct glstate_t
 {
     bool enabledVertProgARB = false;
     bool enabledFragProgARB = false;
+    float clipPlanes[6][4] = { 0.0f };
     texture_desc_t* activeTexture = nullptr;
     GLuint activeQuery = 0;
     unsigned long long queriesTimeOffset = GetClock();
 };
 
+// globals.arb
 struct arbstate_t
 {
     char* errorStr = NULL;
@@ -78,13 +88,23 @@ struct arbstate_t
     program_arb_t* activeFrag = NULL;
 };
 
+// globals.ext
+struct extensions_t
+{
+    bool checked_exts_for_shaders = false;
+    bool hasAlphaFuncQCOM;
+    bool hasTextureLods;
+};
+
+// globals
 struct glin_globals_t
 {
     glin_globals_t()
     {
-        MSG("Initializing globals...");
+        MSG("Initializing GLinES...");
     }
 
+    extensions_t ext;
     render_list_t render;
     glstate_t gl;
     arbstate_t arb;

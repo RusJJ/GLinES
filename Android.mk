@@ -17,10 +17,10 @@ LOCAL_SRC_FILES := \
 	src/gl/render.cpp \
 	src/gl/shader.cpp \
 	src/gl/texture.cpp \
-	thirdparty/Benjamin_Dobell/s3tc.cpp
+	thirdparty/DXTn.c
 
 LOCAL_CFLAGS += -DDEBUG
-LOCAL_CFLAGS += -O2 -ftree-vectorize -mthumb -mfpu=neon -mfloat-abi=softfp -pipe
+LOCAL_CFLAGS += -O2 #-ftree-vectorize -mthumb -mfpu=neon -pipe #-mfloat-abi=softfp
 LOCAL_LDLIBS := -llog
 
 ifeq ($(TARGET_ARCH_ABI), armeabi-v7a)

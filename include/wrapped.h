@@ -1,4 +1,3 @@
-void WRAP(glClipPlane(GLenum plane, const GLdouble *equation));
 void WRAP(glGetCompressedTexImage(GLenum target, GLint lod, GLvoid *img));
 void WRAP(glTexCoord2f(GLfloat s, GLfloat t));
 void WRAP(glPolygonMode(GLenum face, GLenum mode));
@@ -17,23 +16,11 @@ void WRAP(glPopClientAttrib());
 void WRAP(glPushClientAttrib(GLbitfield mask));
 
 
-void WRAP(glBindBuffer(	GLenum target, GLuint buffer));
-void* WRAP(glMapBufferRange( GLenum target,GLintptr offset,GLsizeiptr length,GLbitfield access));
-void WRAP(glBindRenderbuffer( GLenum target,GLuint renderbuffer));
-void WRAP(glBufferData(	GLenum target, GLsizeiptr size, const void * data, GLenum usage));
-GLenum WRAP(glCheckFramebufferStatus( GLenum target));
-void WRAP(glFramebufferRenderbuffer( GLenum target,GLenum attachment,GLenum renderbuffertarget,GLuint renderbuffer));
-GLsync WRAP(glFenceSync(	GLenum condition, GLbitfield flags));
 void WRAP(glGetProgramiv( GLuint program,GLenum pname,GLint *params));
 void WRAP(glGetIntegerv( GLenum pname, GLint * data));
-GLenum WRAP(glClientWaitSync( GLsync sync,GLbitfield flags,GLuint64 timeout));
-void WRAP(glRenderbufferStorageMultisample( GLenum target,GLsizei samples,GLenum internalformat,GLsizei width,GLsizei height));
-void WRAP(glGenFramebuffers(GLsizei n, GLuint *framebuffers));
-void WRAP(glGenRenderbuffers(GLsizei n, GLuint *renderbuffers));
 void WRAP(glEnable(GLenum cap));
 void WRAP(glDisable(GLenum cap));
 GLboolean WRAP(glIsEnabled(GLenum cap));
-void WRAP(glGenSamplers(GLsizei n, GLuint *samplers));
 
 void WRAP(glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter));
 void WRAP(glDrawBuffers(GLsizei n, const GLenum *bufs));

@@ -90,3 +90,4 @@
 "GL_ARB_sync "
 "GL_EXT_framebuffer_multisample "
 "GL_ARB_get_program_binary "
+"GL_ARB_buffer_storage "

@@ -1217,7 +1217,7 @@ STBIWDEF int stbi_write_png(char const *filename, int x, int y, int comp, const 
    FILE *f;
    int len;
    unsigned char *png = stbi_write_png_to_mem((const unsigned char *) data, stride_bytes, x, y, comp, &len);
-   if (png == NULL) return 0;
+   if (png == NULL || len < 1) return 0;
 
    f = stbiw__fopen(filename, "wb");
    if (!f) { STBIW_FREE(png); return 0; }
