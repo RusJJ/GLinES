@@ -8,7 +8,7 @@
 
 static char szShaderSource[65536]; // 64kb?
 
-// Those were taken directly from GL4ES
+// Those were taken directly from GL4ES (no, they dont...)
 static const char* GLES_ftransformFn = 
     "in highp vec4 GLIN_Vertex;\nuniform highp mat4 GLIN_MVP;\nhighp vec4 ftransform(){return GLIN_MVP*GLIN_Vertex;}\n";
 
@@ -22,11 +22,32 @@ static const char* GLES_multiTexCoordVars =
     "in highp vec4 GLIN_MTC14;\nin highp vec4 GLIN_MTC15;\n";
 
 static const char* GLES_fragDataVar_Part1 = 
-    "#define gl_FragData GLIN_FragData\nlayout(location=0) out vec4 gl_FragData[";
+    "#define gl_FragData GLIN_FragData\nlayout(location=0) out mediump vec4 gl_FragData[";
+
+static const char* GLES_min_fix = 
+    "float min(int a,float b){ return min(float(a),b); }\nfloat min(float a,int b){ return min(a,float(b)); }";
+
+static const char* GLES_max_fix = 
+    "float max(int a,float b){ return max(float(a),b); }\nfloat max(float a,int b){ return max(a,float(b)); }";
+
+static const char* GLES_clamp_fix = // Kinda lazy, taken from GL4ES
+    "float clamp(float f,int a,int b) { return clamp(f,float(a),float(b)); }\n"
+    "float clamp(float f,float a,int b) { return clamp(f,a,float(b)); }\n"
+    "float clamp(float f,int a,float b) { return clamp(f,float(a),b); }\n"
+    "vec2 clamp(vec2 f,int a,int b) { return clamp(f,float(a),float(b)); }\n"
+    "vec2 clamp(vec2 f,float a,int b) { return clamp(f,a,float(b)); }\n"
+    "vec2 clamp(vec2 f,int a,float b) { return clamp(f,float(a),b); }\n"
+    "vec3 clamp(vec3 f,int a,int b) { return clamp(f,float(a),float(b)); }\n"
+    "vec3 clamp(vec3 f,float a,int b) { return clamp(f,a,float(b)); }\n"
+    "vec3 clamp(vec3 f,int a,float b) { return clamp(f,float(a),b); }\n"
+    "vec4 clamp(vec4 f,int a,int b) { return clamp(f,float(a),float(b)); }\n"
+    "vec4 clamp(vec4 f,float a,int b) { return clamp(f,a,float(b)); }\n"
+    "vec4 clamp(vec4 f,int a,float b) { return clamp(f,float(a),b); }\n";
 
 static char pszShaderLog[280];
 static char sss[256];
-static GLint shaderLen;
+static GLint shaderLen; static GLuint shaderId;
+static FILE* shaderFile;
 void WRAP(glCompileShader(GLuint shader))
 {
     static GLsizei length;
@@ -35,6 +56,13 @@ void WRAP(glCompileShader(GLuint shader))
     bool isVertex = globals->shaders[shader]->vertexShader;
     glGetShaderSource(shader, sizeof(szShaderSource), &length, szShaderSource);
     PreprocessShader(szShaderSource, isVertex);
+
+    sprintf(sss, "/sdcard/srceng2/shaders_org/shader_%d.txt", shader);
+    shaderFile = fopen(sss, "w+");
+    fputs(szShaderSource, shaderFile);
+    fclose(shaderFile);
+
+    shaderId = shader;
     const char* pNewShader = ConvertShader(szShaderSource, isVertex);
     glShaderSource(shader, 1, (const GLchar**)&pNewShader, &shaderLen);
     glCompileShader(shader);
@@ -44,17 +72,12 @@ void WRAP(glCompileShader(GLuint shader))
     {
         glGetShaderInfoLog(shader, sizeof(pszShaderLog), &length, pszShaderLog);
         ERR("%s shader #%d compilation error:\n%s", isVertex?"Vertex":"Fragment", shader, pszShaderLog);
+    }
 
-        FILE* shaderFile;
-        sprintf(sss, "/sdcard/srceng2/shaders_org/shader_%d.txt", shader);
-        shaderFile = fopen(sss, "w+");
-        fputs(szShaderSource, shaderFile);
-        fclose(shaderFile);
         sprintf(sss, "/sdcard/srceng2/shaders_glin/shader_%d.txt", shader);
         shaderFile = fopen(sss, "w+");
         fputs(pNewShader, shaderFile);
         fclose(shaderFile);
-    }
 }
 
 GLuint WRAP(glCreateShader(GLenum type))
@@ -103,8 +126,8 @@ void WRAP(glLinkProgram(GLuint program))
 
 static bool bHasVersionDefinition;
 static bool bUsingTextureLODEXT, bUsingTexture3DEXT, bUsingFragDepthEXT;
-static bool bUsesFTransformFn, bUsesShadow2DFn, bUsingFragData, bUsingFragColor, bUsingMultiTexCoord, bUsingFFC, bUsingFSC, bUsingBSC, bUsingC, bUsingSC, bUsingFC, bUsingBC;
-static bool bUsingClipVertex;
+static bool bUsesFTransformFn, bUsesShadow2DFn, bUsingFragData, bUsingFragColor, bUsingMultiTexCoord, bUsingFFC, bUsingFSC, bUsingBSC, bUsingC, bUsingSC, bUsingFC, bUsingBC, bUsingClipVertex;
+static bool usesMin, usesMax, usesClamp;
 static int cMaxFragData=-1, ctemp; const char* strFragDatas;
 void PreprocessShader(char* pszShaderSource, bool bIsVertexShader)
 {
@@ -127,6 +150,9 @@ void PreprocessShader(char* pszShaderSource, bool bIsVertexShader)
 // Variables!
     bUsesFTransformFn =     strstr(pszShaderSource, "ftransform(") != NULL      || strstr(pszShaderSource, "ftransform (") != NULL;
     bUsesShadow2DFn =       strstr(pszShaderSource, "shadow2D(") != NULL        || strstr(pszShaderSource, "shadow2D (") != NULL;
+    usesMin =               strstr(pszShaderSource, "min(") != NULL             || strstr(pszShaderSource, "min (") != NULL;
+    usesMax =               strstr(pszShaderSource, "max(") != NULL             || strstr(pszShaderSource, "max (") != NULL;
+    usesClamp =             strstr(pszShaderSource, "clamp(") != NULL           || strstr(pszShaderSource, "clamp (") != NULL;
     bUsingFragColor =       strstr(pszShaderSource, "gl_FragColor") != NULL;
     bUsingMultiTexCoord =   strstr(pszShaderSource, "gl_MultiTexCoord") != NULL;
     bUsingFFC =             strstr(pszShaderSource, "gl_FogFragCoord") != NULL;
@@ -204,25 +230,30 @@ static const std::string strNewLine = "\n";
         newShader +=                           "precision highp float;precision highp int;precision highp sampler3D;\n"; \
         /* Shader Variables! */ \
         if(cMaxFragData > -1){newShader +=     GLES_fragDataVar_Part1; newShader += std::to_string(++cMaxFragData); newShader += "];\n";} \
-        else if(bUsingFragColor) newShader +=  "#define gl_FragColor GLIN_FragColor\nlayout(location=0) out vec4 gl_FragColor;\n"; \
-        if(bUsingFFC) newShader +=             "#define gl_FogFragCoord GLIN_FFC\nout mediump float GLIN_FFC;\n"; \
-        if(bUsingC || bUsingFC)   newShader += "#define gl_FrontColor GLIN_FC\nout lowp vec4 GLIN_FC;\n"; \
-        if(bUsingBC)   newShader +=            "#define gl_BackColor GLIN_BC\nout lowp vec4 GLIN_BC;\n"; \
-        if(bUsingSC || bUsingFSC) newShader += "#define gl_FrontSecondaryColor GLIN_FSC\nout lowp vec4 GLIN_FSC;\n"; \
-        if(bUsingBSC) newShader +=             "#define gl_BackSecondaryColor GLIN_BSC\nout lowp vec4 GLIN_BSC;\n"; \
+        else if(bUsingFragColor) newShader +=  "#define gl_FragColor GLIN_FragColor\nlayout(location=0) out mediump vec4 gl_FragColor;\n"; \
         if(bUsingClipVertex) newShader +=      "#define gl_ClipVertex GLIN_ClipVertex\nvec4 gl_ClipVertex;\n"; \
         if(bUsingC) newShader +=               "#define gl_Color GLIN_FC\n"; \
+        if(bUsingC || bUsingFC)   newShader += "#define gl_FrontColor GLIN_FC\nout lowp vec4 GLIN_FC;\n"; \
+        if(bUsingBC)   newShader +=            "#define gl_BackColor GLIN_BC\nout lowp vec4 GLIN_BC;\n"; \
         if(bUsingSC) newShader +=              "#define gl_SecondaryColor GLIN_FSC\n"; \
+        if(bUsingSC || bUsingFSC) newShader += "#define gl_FrontSecondaryColor GLIN_FSC\nout lowp vec4 GLIN_FSC;\n"; \
+        if(bUsingBSC) newShader +=             "#define gl_BackSecondaryColor GLIN_BSC\nout lowp vec4 GLIN_BSC;\n"; \
+        if(bUsingFFC) newShader +=             "#define gl_FogFragCoord GLIN_FFC\nout mediump float GLIN_FFC;\n"; \
         if(bUsingMultiTexCoord) newShader +=   GLES_multiTexCoordVars; \
         /* Shader Functions! */ \
         if(bUsesFTransformFn) newShader +=     GLES_ftransformFn; \
         if(bUsesShadow2DFn) newShader +=       GLES_shadow2DFn; \
+        if(usesMin) newShader +=               GLES_min_fix; \
+        if(usesMax) newShader +=               GLES_max_fix; \
+        if(usesClamp) newShader +=             GLES_clamp_fix; \
     }
 
 const char* ConvertShader(char* pszShaderSource, bool bIsVertexShader)
 {
     newShader.clear();
-    newShader = bIsVertexShader ? "//Vertex shader has been generated by GLinES\n" : "//Fragment shader has been generated by GLinES\n";
+    newShader = bIsVertexShader ? "//Vertex shader #" : "//Fragment shader #";
+    newShader += std::to_string(shaderId);
+    newShader += " has been generated by GLinES\n";
     bool bFoundVersion = !bHasVersionDefinition;
     if(bFoundVersion) FILL_SHADER_HEADER;
     char* pLine = strtok(pszShaderSource, "\n"); char* pPossiblyUselessText = nullptr;
