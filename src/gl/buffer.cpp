@@ -2,7 +2,7 @@
 
 void* WRAP(glMapBuffer(GLenum target, GLenum access))
 {
-    return glMapBufferRange(target, 0, 1, access);
+    return glMapBufferRange(target, 0, 4, access);
 }
 
 void WRAP(glDrawBuffer(GLenum buf))
