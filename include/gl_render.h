@@ -15,3 +15,6 @@ void WRAP(glDrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end, G
 void WRAP(glClipPlane(GLenum plane, const GLdouble *equation));
 void WRAP(glClipPlanef(GLenum plane, const GLfloat *equation));
 GLenum WRAP(glCheckFramebufferStatus(GLenum target));
+void WRAP(glClearDepth(double value));
+void WRAP(glDepthRange(double n, double f));
+void WRAP(glVertexAttribLPointer(GLuint index, GLint size, GLenum type, GLsizei stride, const void *pointer));

@@ -125,3 +125,19 @@ GLenum WRAP(glCheckFramebufferStatus(GLenum target))
     }
     return ret;
 }
+
+void WRAP(glClearDepth(double value))
+{
+    glClearDepthf((float)value);
+}
+
+void WRAP(glDepthRange(double n, double f))
+{
+    glDepthRangef((float)n, (float)f);
+}
+
+void WRAP(glVertexAttribLPointer(GLuint index, GLint size, GLenum type, GLsizei stride, const void *pointer))
+{
+    // TODO: glVertexAttribLPointer
+    MSG("glVertexAttribLPointer(...)");
+}
