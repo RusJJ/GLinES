@@ -22,7 +22,7 @@ static const char* GLES_multiTexCoordVars =
     "in highp vec4 GLIN_MTC14;\nin highp vec4 GLIN_MTC15;\n";
 
 static const char* GLES_fragDataVar_Part1 = 
-    "#define gl_FragData GLIN_FragData\nlayout(location=0) out mediump vec4 gl_FragData[";
+    "#define gl_FragData GLIN_FragData\nlayout(location=0) out vec4 gl_FragData[";
 
 static const char* GLES_min_fix = 
     "float min(int a,float b){ return min(float(a),b); }\nfloat min(float a,int b){ return min(a,float(b)); }";
@@ -230,15 +230,15 @@ static const std::string strNewLine = "\n";
         newShader +=                           "precision highp float;precision highp int;precision highp sampler3D;\n"; \
         /* Shader Variables! */ \
         if(cMaxFragData > -1){newShader +=     GLES_fragDataVar_Part1; newShader += std::to_string(++cMaxFragData); newShader += "];\n";} \
-        else if(bUsingFragColor) newShader +=  "#define gl_FragColor GLIN_FragColor\nlayout(location=0) out mediump vec4 gl_FragColor;\n"; \
+        else if(bUsingFragColor) newShader +=  "#define gl_FragColor GLIN_FragColor\nlayout(location=0) out vec4 gl_FragColor;\n"; \
         if(bUsingClipVertex) newShader +=      "#define gl_ClipVertex GLIN_ClipVertex\nvec4 gl_ClipVertex;\n"; \
         if(bUsingC) newShader +=               "#define gl_Color GLIN_FC\n"; \
-        if(bUsingC || bUsingFC)   newShader += "#define gl_FrontColor GLIN_FC\nout lowp vec4 GLIN_FC;\n"; \
-        if(bUsingBC)   newShader +=            "#define gl_BackColor GLIN_BC\nout lowp vec4 GLIN_BC;\n"; \
+        if(bUsingC || bUsingFC)   newShader += "#define gl_FrontColor GLIN_FC\nout vec4 GLIN_FC;\n"; \
+        if(bUsingBC)   newShader +=            "#define gl_BackColor GLIN_BC\nout vec4 GLIN_BC;\n"; \
         if(bUsingSC) newShader +=              "#define gl_SecondaryColor GLIN_FSC\n"; \
-        if(bUsingSC || bUsingFSC) newShader += "#define gl_FrontSecondaryColor GLIN_FSC\nout lowp vec4 GLIN_FSC;\n"; \
-        if(bUsingBSC) newShader +=             "#define gl_BackSecondaryColor GLIN_BSC\nout lowp vec4 GLIN_BSC;\n"; \
-        if(bUsingFFC) newShader +=             "#define gl_FogFragCoord GLIN_FFC\nout mediump float GLIN_FFC;\n"; \
+        if(bUsingSC || bUsingFSC) newShader += "#define gl_FrontSecondaryColor GLIN_FSC\nout vec4 GLIN_FSC;\n"; \
+        if(bUsingBSC) newShader +=             "#define gl_BackSecondaryColor GLIN_BSC\nout vec4 GLIN_BSC;\n"; \
+        if(bUsingFFC) newShader +=             "#define gl_FogFragCoord GLIN_FFC\nout float GLIN_FFC;\n"; \
         if(bUsingMultiTexCoord) newShader +=   GLES_multiTexCoordVars; \
         /* Shader Functions! */ \
         if(bUsesFTransformFn) newShader +=     GLES_ftransformFn; \
