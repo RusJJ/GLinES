@@ -23,34 +23,49 @@ void WRAP(glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha))
     clr.w = alpha;
 }
 
-#define __1DIV255 0.00392156863f
+const float __1DIV32767 = ( 1.0 / 32767.0 )
 void WRAP(glColor4sv(const GLshort* v))
 {
-    static vector4_t& clr = globals->render.color;
-    clr.x = __1DIV255 * v[0];
-    clr.y = __1DIV255 * v[1];
-    clr.z = __1DIV255 * v[2];
-    clr.w = __1DIV255 * v[3];
+    vector4_t& clr = globals->render.color;
+    clr.x = __1DIV32767 * v[0];
+    clr.y = __1DIV32767 * v[1];
+    clr.z = __1DIV32767 * v[2];
+    clr.w = __1DIV32767 * v[3];
 }
 
 GLuint nCurrentFB = 0;
+GLuint nCurrentDrawFB = 0;
+GLuint nCurrentReadFB = 0;
 void WRAP(glBindFramebuffer(GLenum target, GLuint framebuffer))
 {
     nCurrentFB = framebuffer;
+    if(target == GL_FRAMEBUFFER)
+    {
+        nCurrentDrawFB = nCurrentReadFB = framebuffer;
+    }
+    else if(target == GL_DRAW_FRAMEBUFFER)
+    {
+        nCurrentDrawFB = framebuffer;
+    }
+    else if(target == GL_READ_FRAMEBUFFER)
+    {
+        nCurrentReadFB = framebuffer;
+    }
     glBindFramebuffer(target, framebuffer);
 }
 
 // GL4ES
 void WRAP(glColorMaskIndexed(GLuint framebuffer, GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha))
 {
-    static GLint drawFboId = 0, readFboId = 0;
+    glColorMaski(framebuffer, red, green, blue, alpha);
+    /*static GLint drawFboId = 0, readFboId = 0;
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFboId);
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFboId);
     GLenum target = (drawFboId == readFboId)?GL_FRAMEBUFFER:GL_DRAW_FRAMEBUFFER;
 
     glBindFramebuffer(target, framebuffer);
     glColorMask(red, green, blue, alpha);
-    glBindFramebuffer(target, nCurrentFB);
+    glBindFramebuffer(target, nCurrentFB);*/
 }
 
 void WRAP(glVertex3f(GLfloat x, GLfloat y, GLfloat z))
