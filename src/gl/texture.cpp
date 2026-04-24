@@ -62,7 +62,7 @@ inline GLvoid *UncompressDXTn(GLsizei width, GLsizei height, GLenum format, GLsi
     const int pixelsize = 4;
     if (imageSize == width * height * pixelsize || data == NULL) return (GLvoid*)data;
     GLvoid *pixels = (GLvoid *)(new char[( ( (width+3)&~3 )*( (height+3)&~3 )*pixelsize )]);
-    int blocksize;
+    int blocksize = 0;
     switch (format)
     {
         case 0x83F0: //GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
@@ -77,6 +77,8 @@ inline GLvoid *UncompressDXTn(GLsizei width, GLsizei height, GLenum format, GLsi
         case 0x8C4F: //GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT:
             blocksize = 16;
             break;
+
+		default: return (GLvoid*)data;
     }
     uintptr_t src = (uintptr_t) data;
     for (uint32_t y = 0; y < height; y += 4)
@@ -115,9 +117,10 @@ void WRAP(glGenTextures(GLsizei n, GLuint * textures))
         tex = globals->textures[textures[i]];
         if(!tex)
         {
-            tex = new texture_desc_t;
+            tex = new texture_desc_t{};
             globals->textures[textures[i]] = tex;
             tex->id = textures[i];
+			tex->width = tex->height = 0;
         }
     }
 }
@@ -127,23 +130,24 @@ void WRAP(glDeleteTextures(GLsizei n, GLuint * textures))
     static int i = 0;
     for(i = 0; i < n; ++i)
     {
-        delete[] globals->textures[textures[i]];
+        delete globals->textures[textures[i]];
     }
     glDeleteTextures(n, textures);
 }
 
 void WRAP(glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, GLvoid *pixels))
 {
-    static GLuint fbo; static GLint read_fbo = 0, draw_fbo = 0;
+    GLuint fbo;
+	GLint read_fbo = 0, draw_fbo = 0;
 
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &draw_fbo);
-    glGetIntegerv(GL_RENDERBUFFER_BINDING, &read_fbo);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read_fbo);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw_fbo);
 
     glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, globals->gl.activeTexture->id, 0);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, globals->gl.activeTexture->id, 0);
     glReadPixels(0, 0, globals->gl.activeTexture->width, globals->gl.activeTexture->height, format, type, pixels);
-    glBindFramebuffer(GL_FRAMEBUFFER, nCurrentFB);
+    //glBindFramebuffer(GL_FRAMEBUFFER, nCurrentFB);
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, read_fbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw_fbo);
@@ -168,14 +172,19 @@ void WRAP(glTexStorage2D(GLenum target, GLsizei levels, GLenum internalformat, G
 {
     if(!levels) return;
 
+	glTexStorage2D(target, levels, internalformat, width, height);
+
+	globals->gl.activeTexture->width = width;
+    globals->gl.activeTexture->height = height;
 }
 
 void WRAP(glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void * pixels))
 {
     if(type == 0x8367) type = GL_UNSIGNED_BYTE; //GL_UNSIGNED_INT_8_8_8_8_REV
 
-    globals->gl.activeTexture->width = width - xoffset;
-    globals->gl.activeTexture->height = height - yoffset;
+	// TODO: recheck old code?
+    //globals->gl.activeTexture->width = width - xoffset;
+    //globals->gl.activeTexture->height = height - yoffset;
 
     return glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels);
 }
@@ -192,6 +201,7 @@ void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum internalform
 	GLenum intformat = GL_RGBA;
     GLenum type = GL_UNSIGNED_BYTE;
 	GLvoid *pixels = NULL;
+	bool needPixelsCleanup = false;
 
     if (isDXTc(internalformat))
     {
@@ -199,9 +209,13 @@ void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum internalform
         int complexAlpha = 0;
         bool transparent0 = (internalformat==0x83F1 || internalformat==0x8C4D)?true:false;
         if(data) pixels = UncompressDXTn(width, height, internalformat, imageSize, transparent0, &simpleAlpha, &complexAlpha, data);
+		needPixelsCleanup = (pixels && pixels != data);
+			
 		if(isDXTcSRGB(internalformat)) intformat = GL_SRGB8_ALPHA8;
 	}
 	WRAP(glTexImage2D( target, level, intformat, width, height, border, format, GL_UNSIGNED_BYTE, pixels?pixels:data ));
+
+	if(needPixelsCleanup) delete[] pixels;
 }
 
 //void WRAP(glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum internalformat, GLsizei imageSize, const void * data))
