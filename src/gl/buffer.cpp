@@ -6,7 +6,11 @@ void* WRAP(glMapBuffer(GLenum target, GLenum access))
     else if(access == 0x88B9) access = GL_MAP_WRITE_BIT;
     else if(access == 0x88BA) access = GL_MAP_READ_BIT|GL_MAP_WRITE_BIT;
     // target == GL_QUERY_BUFFER ?
-    return glMapBufferRange(target, 0, sizeof(void*), access);
+
+    GLint size = 0;
+    glGetBufferParameteriv(target, GL_BUFFER_SIZE, &size);
+    
+    return glMapBufferRange(target, 0, size, access);
 }
 
 void WRAP(glDrawBuffer(GLenum buf))
