@@ -12,17 +12,12 @@ static char szShaderSource[65536]; // 64kb?
 static const char* GLES_ftransformFn = 
     "in highp vec4 GLIN_Vertex;\nuniform highp mat4 GLIN_MVP;\nhighp vec4 ftransform(){return GLIN_MVP*GLIN_Vertex;}\n";
 
-static const char* GLES_shadow2DFn = 
-    "vec4 _Sh2D_TMP=vec4(0.0);vec4 shadow2D(sampler2DShadow a,vec3 b){_Sh2D_TMP.x=texture(a,b);return _Sh2D_TMP;}\n";
-
 static const char* GLES_multiTexCoordVars = 
     "in highp vec4 GLIN_MTC0;\nin highp vec4 GLIN_MTC1;\nin highp vec4 GLIN_MTC2;\nin highp vec4 GLIN_MTC3;\n"
-    "in highp vec4 GLIN_MTC4;\nin highp vec4 GLIN_MTC5;\nin highp vec4 GLIN_MTC6;\nin highp vec4 GLIN_MTC7;\nin highp vec4 GLIN_MTC8;\n"
-    "in highp vec4 GLIN_MTC9;\nin highp vec4 GLIN_MTC10;\nin highp vec4 GLIN_MTC11;\nin highp vec4 GLIN_MTC12;\nin highp vec4 GLIN_MTC13;\n"
-    "in highp vec4 GLIN_MTC14;\nin highp vec4 GLIN_MTC15;\n";
+    "in highp vec4 GLIN_MTC4;\nin highp vec4 GLIN_MTC5;\nin highp vec4 GLIN_MTC6;\nin highp vec4 GLIN_MTC7;\n";
 
 static const char* GLES_fragDataVar_Part1 = 
-    "#define gl_FragData GLIN_FragData\nlayout(location=0) out vec4 gl_FragData[";
+    "#define gl_FragData GLIN_FragData\n#define gl_FragColor gl_FragData[0]\nlayout(location=0) out vec4 gl_FragData[";
 
 static const char* GLES_min_fix = 
     "float min(int a,float b){ return min(float(a),b); }\nfloat min(float a,int b){ return min(a,float(b)); }";
@@ -125,8 +120,7 @@ void WRAP(glLinkProgram(GLuint program))
 }
 
 static bool bHasVersionDefinition;
-static bool bUsingTextureLODEXT, bUsingTexture3DEXT, bUsingFragDepthEXT;
-static bool bUsesFTransformFn, bUsesShadow2DFn, bUsingFragData, bUsingFragColor, bUsingMultiTexCoord, bUsingFFC, bUsingFSC, bUsingBSC, bUsingC, bUsingSC, bUsingFC, bUsingBC, bUsingClipVertex;
+static bool bUsesFTransformFn, bUsingFragData, bUsingFragColor, bUsingMultiTexCoord, bUsingFFC, bUsingFSC, bUsingBSC, bUsingC, bUsingSC, bUsingFC, bUsingBC, bUsingClipVertex;
 static bool usesMin, usesMax, usesClamp;
 static int cMaxFragData=-1, ctemp; const char* strFragDatas;
 void PreprocessShader(char* pszShaderSource, bool bIsVertexShader)
@@ -142,14 +136,9 @@ void PreprocessShader(char* pszShaderSource, bool bIsVertexShader)
 // Shader's Must-have things
     bHasVersionDefinition = strstr(pszShaderSource, "#version") != NULL;
 // Extensions
-    bUsingTextureLODEXT =  (strstr(pszShaderSource, "texture2DLod") != NULL     || strstr(pszShaderSource, "texture2DProjLod") != NULL     ||
-                            strstr(pszShaderSource, "textureCubeLod") != NULL   || strstr(pszShaderSource, "textureCubeGradARB") != NULL   ||
-                            strstr(pszShaderSource, "texture2DGradARB") != NULL || strstr(pszShaderSource, "texture2DProjGradARB") != NULL  );
-    bUsingTexture3DEXT =   (strstr(pszShaderSource, "sampler3D") != NULL        || strstr(pszShaderSource, "texture3D") != NULL);
-    bUsingFragDepthEXT =    strstr(pszShaderSource, "gl_FragDepth") != NULL;
+    
 // Variables!
     bUsesFTransformFn =     strstr(pszShaderSource, "ftransform(") != NULL      || strstr(pszShaderSource, "ftransform (") != NULL;
-    bUsesShadow2DFn =       strstr(pszShaderSource, "shadow2D(") != NULL        || strstr(pszShaderSource, "shadow2D (") != NULL;
     usesMin =               strstr(pszShaderSource, "min(") != NULL             || strstr(pszShaderSource, "min (") != NULL;
     usesMax =               strstr(pszShaderSource, "max(") != NULL             || strstr(pszShaderSource, "max (") != NULL;
     usesClamp =             strstr(pszShaderSource, "clamp(") != NULL           || strstr(pszShaderSource, "clamp (") != NULL;
@@ -171,6 +160,8 @@ void PreprocessShader(char* pszShaderSource, bool bIsVertexShader)
         if(strFragDatas[11] == '[') ctemp = atoi(&strFragDatas[12]);
         else ctemp = atoi(&strFragDatas[13]);
         if(ctemp > cMaxFragData) cMaxFragData = ctemp;
+        
+        bUsingFragData = true;
     }
 }
 
@@ -215,23 +206,17 @@ static const std::string strNewLine = "\n";
 #define FILL_SHADER_HEADER \
     { \
         /* Shader Header! */ \
-        newShader += "#version 300 es\n#define attribute in\n" \
-        "#define texture2D texture\n#define texture3D texture\n#define textureCube texture\n#define texture2DProj textureProj\n"; \
-        if(bIsVertexShader) newShader += "#define varying out\n"; else newShader += "#define varying in\n"; \
+        newShader += "#version 320 es\n#define attribute in\n"; \
+        if(!bIsVertexShader) newShader += "#define texture1D(s, t) texture(s, vec2(x, 0.5))\n" \
+        "#define texture2D texture\n#define texture3D texture\n#define textureCube texture\n#define texture2DProj textureProj\n" \
+        "#define shadow2D texture\n"; \
+        newShader += (bIsVertexShader ? "#define varying out\n" : "#define varying in\n"); \
         /* Shader Extensions! */ \
-        if(bUsingFragDepthEXT) newShader +=    "#extension GL_EXT_frag_depth : enable\n"; \
-        if(bUsingTexture3DEXT) newShader +=    "#extension GL_OES_texture_3D : enable\n"; \
-        if(bUsingTextureLODEXT) { if(globals->ext.hasTextureLods) \
-        {   newShader += "#extension GL_EXT_shader_texture_lod : enable\n" \
-                         "#define texture2DLod texture2DLodEXT\n#define texture2DProjLod texture2DProjLodEXT\n#define textureCubeLod textureCubeLodEXT\n" \
-                         "#define texture2DProjGradARB texture2DProjGradEXT\n#define textureCubeGradARB textureCubeGradEXT\n#define texture2DGradARB texture2DGradEXT\n"; \
-        } else { \
-            newShader += "// GPU has no TextureLOD support\n"; \
-        }} \
+        /* TODO: */ \
         /* Precisions */ \
-        newShader +=                           "precision highp float;precision highp int;precision highp sampler3D;\n"; \
+        newShader +=                           "\nprecision highp float;\nprecision highp int;\nprecision highp sampler3D;\n\n"; \
         /* Shader Variables! */ \
-        if(cMaxFragData > -1){newShader +=     GLES_fragDataVar_Part1; newShader += std::to_string(++cMaxFragData); newShader += "];\n";} \
+        if(cMaxFragData > -1) { newShader +=     GLES_fragDataVar_Part1; newShader += std::to_string(++cMaxFragData); newShader += "];\n";} \
         else if(bUsingFragColor) newShader +=  "#define gl_FragColor GLIN_FragColor\nlayout(location=0) out vec4 gl_FragColor;\n"; \
         if(bUsingClipVertex) newShader +=      "#define gl_ClipVertex GLIN_ClipVertex\nvec4 gl_ClipVertex;\n"; \
         if(bUsingC) newShader +=               "#define gl_Color GLIN_FC\n"; \
@@ -244,7 +229,6 @@ static const std::string strNewLine = "\n";
         if(bUsingMultiTexCoord) newShader +=   GLES_multiTexCoordVars; \
         /* Shader Functions! */ \
         if(bUsesFTransformFn) newShader +=     GLES_ftransformFn; \
-        if(bUsesShadow2DFn) newShader +=       GLES_shadow2DFn; \
         if(usesMin) newShader +=               GLES_min_fix; \
         if(usesMax) newShader +=               GLES_max_fix; \
         if(usesClamp) newShader +=             GLES_clamp_fix; \
@@ -268,7 +252,10 @@ const char* ConvertShader(char* pszShaderSource, bool bIsVertexShader)
                 bFoundVersion = true;
                 FILL_SHADER_HEADER;
             }
-            else newShader += pLine + strNewLine;
+            else
+            {
+                newShader += pLine + strNewLine;
+            }
         }
         else
         {

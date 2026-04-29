@@ -23,7 +23,7 @@ void WRAP(glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha))
     clr.w = alpha;
 }
 
-const float __1DIV32767 = ( 1.0 / 32767.0 )
+const double __1DIV32767 = ( 1.0 / 32767.0 );
 void WRAP(glColor4sv(const GLshort* v))
 {
     vector4_t& clr = globals->render.color;

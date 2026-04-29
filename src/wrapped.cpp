@@ -222,10 +222,10 @@ GLboolean WRAP(glIsEnabled(GLenum cap))
     }
 }
 
-void WRAP(glClearColor(GLclampf r, GLclampf g, GLclampf b, GLclampf a))
+/*void WRAP(glClearColor(GLclampf r, GLclampf g, GLclampf b, GLclampf a))
 {
-    glClearColor(0.5f, 0.5f, 0.5f, a);
-}
+    glClearColor(r, g, b, a);
+}*/
 
 void WRAP(glClear(GLbitfield mask))
 {

@@ -73,7 +73,7 @@ struct glstate_t
 {
     bool enabledVertProgARB = false;
     bool enabledFragProgARB = false;
-    float clipPlanes[6][4] = { 0.0f };
+    float clipPlanes[6][4] = { { 0.0f } } ;
     texture_desc_t* activeTexture = nullptr;
     GLuint activeQuery = 0;
     unsigned long long queriesTimeOffset = GetClock();

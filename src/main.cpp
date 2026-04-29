@@ -57,7 +57,7 @@ const GLubyte* WRAP(glGetString(GLenum name))
     switch(name)
     {
         case GL_VERSION:
-            return (GLubyte*)"4.4"; // Not enough for 4.5!
+            return (GLubyte*)"3.3"; // Lets get it working one by one.
 
         case GL_VENDOR:
             return (GLubyte*)"RusJJ aka [-=KILL MAN=-]";
@@ -66,7 +66,7 @@ const GLubyte* WRAP(glGetString(GLenum name))
             return (GLubyte*)"GLinES";
             
         case GL_SHADING_LANGUAGE_VERSION:
-            return (GLubyte*)"2.1 over GLinES";
+            return (GLubyte*)"3.30 via GLinES " GLINES_VERSION_STR;
             
         case GL_EXTENSIONS:
             return (GLubyte*)pszGLExtensions;
@@ -152,6 +152,8 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glGetBooleanIndexedv);
     GLIN_ALL(glPushClientAttrib);
     GLIN_ALL(glPopClientAttrib);
+// Wraps (debug purpose)
+    //GLIN_ALL(glClearColor);
 // Default ES 3.x functions
     #include "ES3_Funcs.inl"
 // Unknown function?
