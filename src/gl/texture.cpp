@@ -12,6 +12,16 @@ extern "C"
     #include "thirdparty/DXTn.h"
 }
 
+static void TestTextureExtensions()
+{
+    if(!globals->ext.checked_exts_for_textures)
+    {
+        globals->ext.checked_exts_for_textures = true;
+        const char* extensions = (const char*)glGetString(GL_EXTENSIONS);
+        globals->ext.hasDXT = strstr(extensions, "GL_EXT_texture_compression_s3tc") != NULL;
+    }
+}
+
 inline bool isDXTc(GLenum format)
 {
     switch (format)
@@ -193,6 +203,8 @@ void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum internalform
     if(!data || width < 1 || height < 1) return; //glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
     if(internalformat == GL_RGBA8) internalformat = 0x83F1; //GL_COMPRESSED_RGBA_S3TC_DXT1_EXT; // GL4ES hack
 
+    TestTextureExtensions();
+    
     globals->gl.activeTexture->width = width;
     globals->gl.activeTexture->height = height;
 
@@ -202,7 +214,7 @@ void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum internalform
 	GLvoid *pixels = NULL;
 	bool needPixelsCleanup = false;
 
-    if (isDXTc(internalformat))
+    if (isDXTc(internalformat) && !globals->ext.hasDXT)
     {
         int simpleAlpha = 0;
         int complexAlpha = 0;
@@ -212,9 +224,27 @@ void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum internalform
 			
 		if(isDXTcSRGB(internalformat)) intformat = GL_SRGB8_ALPHA8;
 	}
-	WRAP(glTexImage2D( target, level, intformat, width, height, border, format, GL_UNSIGNED_BYTE, pixels?pixels:data ));
+	WRAP(glTexImage2D( target, level, intformat, width, height, border, format, GL_UNSIGNED_BYTE, pixels ? pixels : data ));
 
 	if(needPixelsCleanup) delete[] pixels;
+}
+
+void WRAP(glTexImage2DMultisample(GLenum target, GLsizei samples, GLenum internalFormat, GLsizei width, GLsizei height, GLboolean fixedSampleLocations))
+{
+    // TODO: proxy
+    glTexStorage2DMultisample(target, samples, internalFormat, width, height, fixedSampleLocations);
+}
+
+void WRAP(glTexImage3DMultisample(GLenum target, GLsizei samples, GLenum internalFormat, GLsizei width, GLsizei height, GLsizei depth, GLboolean fixedSampleLocations))
+{
+    // TODO: proxy
+    glTexStorage3DMultisample(target, samples, internalFormat, width, height, depth, fixedSampleLocations);
+}
+
+void WRAP(glFramebufferTexture3D(GLenum target, GLenum attachment,  GLenum textarget, GLuint texture, GLint level, GLint layer))
+{
+    // TODO: textarget logic?
+    glFramebufferTextureLayer(target, attachment, texture, level, layer);
 }
 
 //void WRAP(glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum internalformat, GLsizei imageSize, const void * data))

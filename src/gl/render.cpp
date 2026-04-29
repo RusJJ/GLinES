@@ -96,6 +96,8 @@ void WRAP(glVertexAttrib3d(GLuint index, GLdouble x, GLdouble y, GLdouble z))
     glVertexAttrib3f(index, x, y, z);
 }
 
+// TODO: a ton of attributes...
+
 void WRAP(glMultiDrawArrays(GLenum mode, const GLint* first, const GLsizei* count, GLsizei drawcount))
 {
     for(GLsizei i = 0; i < drawcount; ++i)

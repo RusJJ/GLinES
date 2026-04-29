@@ -107,7 +107,6 @@ void WRAP(glEndQuery(GLenum target, GLuint id))
 
 void WRAP(glQueryCounter(GLuint id, GLenum target))
 {
-    if(target != 0x8E28) return; // GL_TIMESTAMP
     query_desc_t* query = globals->queries[id];
     if(query == NULL || query->active) return;
 

@@ -46,7 +46,8 @@ const char* pszGLExtensions =
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-void *(*pSetGetProcAddr)(const char* name) = NULL;
+typedef void *(*getprocaddressType)(const char *);
+getprocaddressType pGetProcAddr = NULL;
 void* GLIN_Stub0(void* param, ...) // Returns 0
 {
     return NULL;
@@ -80,13 +81,13 @@ const GLubyte* WRAP(glGetString(GLenum name))
 
 GLINAPI void EXPORT GLIN_SetProcAddr(void*(*fn)(const char*))
 {
-    pSetGetProcAddr = fn;
+    pGetProcAddr = fn;
 }
 
 GLINAPI void* EXPORT GLIN_ProcAddr(void* lib, const char* name)
 {
     void* ret = NULL;
-    if(pSetGetProcAddr != NULL) ret = pSetGetProcAddr(name);
+    if(pGetProcAddr != NULL) ret = pGetProcAddr(name);
     if(ret == NULL) ret = dlsym(lib, name);
     return ret;
 }
@@ -98,13 +99,23 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glColor4f);
     GLIN_MAP(glColor4sv);
     GLIN_ALL(glColorMaskIndexed);
+// Textures
+    GLIN_ALL(glGenTextures);
+    GLIN_ALL(glDeleteTextures);
+    GLIN_ALL(glTexImage2D);
+    GLIN_ALL(glTexSubImage2D);
+    GLIN_ALL(glGetTexImage);
+    GLIN_ALL(glCompressedTexImage2D);
+    GLIN_ALL(glTexImage2DMultisample);
+    GLIN_ALL(glTexImage3DMultisample);
+    GLIN_ALL(glFramebufferTexture3D);
 // Render
     GLIN_ALL(glVertexAttrib3d);
     GLIN_ALL(glMultiDrawArrays);
     GLIN_ALL(glMultiDrawElements);
     GLIN_ALL(glMultiDrawElementsBaseVertex);
 // Shader
-    GLIN_ALL(glCompileShader); // REVERT
+    GLIN_ALL(glCompileShader);
     GLIN_ALL(glCreateShader);
     GLIN_ALL(glLinkProgram);
     GLIN_ALL(glGetActiveUniformName);
@@ -113,20 +124,20 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glDeleteObject);
     GLIN_ALL(glGetObjectParameterfv);
     GLIN_ALL(glGetObjectParameteriv);
-// Queries
-    GLIN_ALL(glGenQueries);
-    GLIN_ALL(glDeleteQueries);
-    GLIN_ALL(glIsQuery);
-    GLIN_ALL(glBeginQuery);
-    GLIN_ALL(glEndQuery);
-    GLIN_ALL(glQueryCounter);
-    GLIN_ALL(glGetQueryiv);
-    GLIN_ALL(glGetQueryObjectiv);
-    GLIN_ALL(glGetQueryObjectuiv);
-    GLIN_MAP(glGetQueryObjecti64v);
-    GLIN_MAP(glGetQueryObjectui64v);
+// Queries (GL_EXT_disjoint_timer_query seems to be everywhere)
+    AS_ALL(glGenQueries, glGenQueriesEXT);
+    AS_ALL(glDeleteQueries, glDeleteQueriesEXT);
+    AS_ALL(glIsQuery, glIsQueryEXT);
+    AS_ALL(glBeginQuery, glBeginQueryEXT);
+    AS_ALL(glEndQuery, glEndQueryEXT);
+    AS_ALL(glQueryCounter, glQueryCounterEXT);
+    AS_ALL(glGetQueryiv, glGetQueryivEXT);
+    AS_ALL(glGetQueryObjectiv, glGetQueryObjectivEXT);
+    AS_ALL(glGetQueryObjectuiv, glGetQueryObjectuivEXT);
+    AS_MAP(glGetQueryObjecti64v, glGetQueryObjecti64vEXT);
+    AS_MAP(glGetQueryObjectui64v, glGetQueryObjectui64vEXT);
 // Programs
-    GLIN_ARB(glGenPrograms); // GL4ES
+    GLIN_ARB(glGenPrograms);
     GLIN_ARB(glDeletePrograms);
 // Buffers
     GLIN_ALL(glMapBuffer);
@@ -135,11 +146,9 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glBindFramebuffer);
     GLIN_ALL(glCheckFramebufferStatus);
 // Probably complete
-    GLIN_MAP(glCompressedTexImage2D); // GL4ES
-    GLIN_ARB(glBindProgram); // GL4ES
+    GLIN_ARB(glBindProgram);
     GLIN_ARB(glProgramString);
     GLIN_ARB(glGetProgramString);
-    GLIN_ALL(glGetTexImage);
     GLIN_ALL(glGetDoublev);
     GLIN_ALL(glPixelStoref);
 // Incomplete
@@ -148,7 +157,7 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glEnd);
     GLIN_MAP(glOrtho);
     GLIN_ALL(glMatrixMode);
-    GLIN_MAP(glVertex3f); // GL4ES
+    GLIN_MAP(glVertex3f);
     GLIN_MAP(glClipPlane);
     GLIN_MAP(glClipPlanef);
 // Not implemented
@@ -179,7 +188,8 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
 // If we're a replacement for GL4ES:
 GLINAPI void* EXPORT gl4es_GetProcAddress(const char* name) { return GLIN_GetProcAddress(name); }
 GLINAPI void EXPORT initialize_gl4es() { DBG("GLinES doesn`t need to be initialized!"); }
-GLINAPI void EXPORT set_getprocaddress(void *(*new_proc_address)(const char *)) { GLIN_SetProcAddr(new_proc_address); }
+GLINAPI void EXPORT set_getprocaddress(getprocaddressType new_proc_address) { GLIN_SetProcAddr(new_proc_address); }
+GLINAPI getprocaddressType EXPORT get_getprocaddress() { return pGetProcAddr; } // for fun!
 
 // Our own things
 static glin_globals_t globalsLocal;

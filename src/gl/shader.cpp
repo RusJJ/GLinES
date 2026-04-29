@@ -55,7 +55,7 @@ void WRAP(glCompileShader(GLuint shader))
     sprintf(sss, "/sdcard/srceng2/shaders_org/shader_%d.txt", shader);
     shaderFile = fopen(sss, "w+");
     fputs(szShaderSource, shaderFile);
-    fclose(shaderFile);
+    fclose(shaderFile); // TODO: remove debug
 
     shaderId = shader;
     const char* pNewShader = ConvertShader(szShaderSource, isVertex);
@@ -72,7 +72,7 @@ void WRAP(glCompileShader(GLuint shader))
         sprintf(sss, "/sdcard/srceng2/shaders_glin/shader_%d.txt", shader);
         shaderFile = fopen(sss, "w+");
         fputs(pNewShader, shaderFile);
-        fclose(shaderFile);
+        fclose(shaderFile); // TODO: remove debug
 }
 
 GLuint WRAP(glCreateShader(GLenum type))

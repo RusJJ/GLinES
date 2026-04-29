@@ -94,8 +94,11 @@ struct arbstate_t
 struct extensions_t
 {
     bool checked_exts_for_shaders = false;
+    bool checked_exts_for_textures = false;
+    
     bool hasAlphaFuncQCOM;
     bool hasTextureLods;
+    bool hasDXT;
 };
 
 // globals
