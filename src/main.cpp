@@ -95,12 +95,19 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
 {
 // Main
     GLIN_MAP(glGetString);
-    GLIN_ALL(glCompileShader); // REVERT
-    GLIN_ALL(glMapBuffer);
-    GLIN_ALL(glDrawBuffer);
     GLIN_MAP(glColor4f);
     GLIN_MAP(glColor4sv);
     GLIN_ALL(glColorMaskIndexed);
+// Render
+    GLIN_ALL(glVertexAttrib3d);
+    GLIN_ALL(glMultiDrawArrays);
+    GLIN_ALL(glMultiDrawElements);
+    GLIN_ALL(glMultiDrawElementsBaseVertex);
+// Shader
+    GLIN_ALL(glCompileShader); // REVERT
+    GLIN_ALL(glCreateShader);
+    GLIN_ALL(glLinkProgram);
+    GLIN_ALL(glGetActiveUniformName);
 // Object
     GLIN_ALL(glGetInfoLog);
     GLIN_ALL(glDeleteObject);
@@ -121,12 +128,20 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
 // Programs
     GLIN_ARB(glGenPrograms); // GL4ES
     GLIN_ARB(glDeletePrograms);
+// Buffers
+    GLIN_ALL(glMapBuffer);
+    GLIN_ALL(glDrawBuffer);
+    GLIN_ALL(glGetBufferSubData);
+    GLIN_ALL(glBindFramebuffer);
+    GLIN_ALL(glCheckFramebufferStatus);
 // Probably complete
     GLIN_MAP(glCompressedTexImage2D); // GL4ES
     GLIN_ARB(glBindProgram); // GL4ES
     GLIN_ARB(glProgramString);
     GLIN_ARB(glGetProgramString);
     GLIN_ALL(glGetTexImage);
+    GLIN_ALL(glGetDoublev);
+    GLIN_ALL(glPixelStoref);
 // Incomplete
     GLIN_ALL(glGetCompressedTexImage);
     GLIN_MAP(glBegin);

@@ -280,3 +280,8 @@ const char* ConvertShader(char* pszShaderSource, bool bIsVertexShader)
     shaderLen = newShader.length();
     return newShader.c_str();
 }
+
+void WRAP(glGetActiveUniformName(GLuint program, GLuint uniformIndex, GLsizei bufSize, GLsizei* length, char* name))
+{
+    glGetProgramResourceName(program, GL_UNIFORM, uniformIndex, bufSize, length, name);
+}

@@ -76,6 +76,8 @@ struct glstate_t
     float clipPlanes[6][4] = { { 0.0f } } ;
     texture_desc_t* activeTexture = nullptr;
     GLuint activeQuery = 0;
+    GLuint activeDrawBuffer = 0;
+    GLuint activeReadBuffer = 0;
     unsigned long long queriesTimeOffset = GetClock();
 };
 

@@ -147,7 +147,6 @@ void WRAP(glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
     glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, globals->gl.activeTexture->id, 0);
     glReadPixels(0, 0, globals->gl.activeTexture->width, globals->gl.activeTexture->height, format, type, pixels);
-    //glBindFramebuffer(GL_FRAMEBUFFER, nCurrentFB);
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, read_fbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw_fbo);

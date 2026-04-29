@@ -33,39 +33,9 @@ void WRAP(glColor4sv(const GLshort* v))
     clr.w = __1DIV32767 * v[3];
 }
 
-GLuint nCurrentFB = 0;
-GLuint nCurrentDrawFB = 0;
-GLuint nCurrentReadFB = 0;
-void WRAP(glBindFramebuffer(GLenum target, GLuint framebuffer))
-{
-    nCurrentFB = framebuffer;
-    if(target == GL_FRAMEBUFFER)
-    {
-        nCurrentDrawFB = nCurrentReadFB = framebuffer;
-    }
-    else if(target == GL_DRAW_FRAMEBUFFER)
-    {
-        nCurrentDrawFB = framebuffer;
-    }
-    else if(target == GL_READ_FRAMEBUFFER)
-    {
-        nCurrentReadFB = framebuffer;
-    }
-    glBindFramebuffer(target, framebuffer);
-}
-
-// GL4ES
 void WRAP(glColorMaskIndexed(GLuint framebuffer, GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha))
 {
     glColorMaski(framebuffer, red, green, blue, alpha);
-    /*static GLint drawFboId = 0, readFboId = 0;
-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFboId);
-    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFboId);
-    GLenum target = (drawFboId == readFboId)?GL_FRAMEBUFFER:GL_DRAW_FRAMEBUFFER;
-
-    glBindFramebuffer(target, framebuffer);
-    glColorMask(red, green, blue, alpha);
-    glBindFramebuffer(target, nCurrentFB);*/
 }
 
 void WRAP(glVertex3f(GLfloat x, GLfloat y, GLfloat z))
@@ -105,42 +75,6 @@ void WRAP(glClipPlanef(GLenum plane, const GLfloat *equation))
     //globals->gl.clipPlanes[plane - GL_CLIP_PLANE0];
 }
 
-GLenum WRAP(glCheckFramebufferStatus(GLenum target))
-{
-    GLenum ret = glCheckFramebufferStatus(target);
-    switch(ret)
-    {
-        case GL_FRAMEBUFFER_COMPLETE:
-            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_COMPLETE", target);
-            break;
-            
-        case GL_FRAMEBUFFER_UNDEFINED:
-            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_UNDEFINED", target);
-            break;
-            
-        case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
-            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT", target);
-            break;
-            
-        case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
-            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT", target);
-            break;
-            
-        case GL_FRAMEBUFFER_UNSUPPORTED:
-            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_UNSUPPORTED", target);
-            break;
-            
-        case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
-            MSG("glCheckFramebufferStatus(0x%X) = GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE", target);
-            break;
-
-        default:
-            MSG("glCheckFramebufferStatus(0x%X) = UNKNOWN", target);
-            break;
-    }
-    return ret;
-}
-
 void WRAP(glClearDepth(double value))
 {
     glClearDepthf((float)value);
@@ -155,4 +89,33 @@ void WRAP(glVertexAttribLPointer(GLuint index, GLint size, GLenum type, GLsizei 
 {
     // TODO: glVertexAttribLPointer
     MSG("glVertexAttribLPointer(...)");
+}
+
+void WRAP(glVertexAttrib3d(GLuint index, GLdouble x, GLdouble y, GLdouble z))
+{
+    glVertexAttrib3f(index, x, y, z);
+}
+
+void WRAP(glMultiDrawArrays(GLenum mode, const GLint* first, const GLsizei* count, GLsizei drawcount))
+{
+    for(GLsizei i = 0; i < drawcount; ++i)
+    {
+        glDrawArrays(mode, first[i], count[i]);
+    }
+}
+
+void WRAP(glMultiDrawElements(GLenum mode, const GLsizei* count, GLenum type, const void* const* indices, GLsizei drawcount))
+{
+    for(GLsizei i = 0; i < drawcount; ++i)
+    {
+        glDrawElements(mode, count[i], type, indices[i]);
+    }
+}
+
+void WRAP(glMultiDrawElementsBaseVertex(GLenum mode, const GLsizei* count, GLenum type, const void* const* indices, GLsizei drawcount, const GLint* basevertex))
+{
+    for(GLsizei i = 0; i < drawcount; ++i)
+    {
+        glDrawElementsBaseVertex(mode, count[i], type, indices[i], basevertex[i]);
+    }
 }

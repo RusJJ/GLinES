@@ -2,4 +2,6 @@
 
 void* WRAP(glMapBuffer(GLenum target, GLenum access));
 void WRAP(glDrawBuffer(GLenum buf));
-void WRAP(glCopyBufferSubData(GLenum readTarget, GLenum writeTarget, GLintptr readOffset, GLintptr writeOffset, GLsizeiptr size));
+void WRAP(glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void* dst));
+void WRAP(glBindFramebuffer(GLenum target, GLuint framebuffer));
+GLenum WRAP(glCheckFramebufferStatus(GLenum target));
