@@ -15,14 +15,110 @@ inline unsigned long long GetClock()
 	return ((unsigned long long)out.tv_sec)*1000000000LL + out.tv_nsec;
 }
 
+struct vector2_t
+{
+    float x, y;
+};
 struct vector3_t
 {
     float x, y, z;
 };
-
 struct vector4_t
 {
     float x, y, z, w;
+};
+struct matrix4_t
+{
+    float m[16];
+    
+    static inline matrix4_t Identity()
+    {
+        return matrix4_t
+        {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f
+        };
+    }
+};
+
+// globals.matrix
+struct matrix_stack_t
+{
+    unsigned char pos = 0;
+    matrix4_t matrices[MAX_COUNT_OF_MATRIX_STACK];
+    
+    inline matrix4_t& Push()
+    {
+        if(pos < MAX_COUNT_OF_MATRIX_STACK-1) ++pos;
+        return matrices[pos];
+    }
+    inline matrix4_t& Current()
+    {
+        return matrices[pos];
+    }
+    inline void Pop()
+    {
+        if(pos > 0) --pos;
+    }
+};
+struct matrices_type_stack_t
+{
+    GLenum mode = GL_MODELVIEW;
+    matrix_stack_t projection;
+    matrix_stack_t modelview;
+    matrix_stack_t texture;
+    
+    inline matrix4_t& Push()
+    {
+        if(mode == GL_PROJECTION) return projection.Push();
+        else if(mode == GL_TEXTURE) return texture.Push();
+        else return modelview.Push();
+    }
+    inline matrix4_t& Current()
+    {
+        if(mode == GL_PROJECTION) return projection.Current();
+        else if(mode == GL_TEXTURE) return texture.Current();
+        else return modelview.Current();
+    }
+    inline void Pop()
+    {
+        if(mode == GL_PROJECTION) return projection.Pop();
+        else if(mode == GL_TEXTURE) return texture.Pop();
+        else return modelview.Pop();
+    }
+};
+
+// globals.ff
+struct fixed_func_state_t
+{
+    bool lightingEnabled = false;
+    bool normalizeEnabled = false;
+    bool fogEnabled = false;
+    bool logicOpEnabled = false;
+    GLenum logicOpMode = GL_COPY;
+
+    float lightPos[8][4] = { {0,0,1,0} };
+    float lightAmbient[8][4] = { {0,0,0,1} };
+    float lightDiffuse[8][4] = { {0,0,0,1} };
+    
+    float matAmbient[4] = {0.2f, 0.2f, 0.2f, 1.0f};
+    float matDiffuse[4] = {0.8f, 0.8f, 0.8f, 1.0f};
+    float matSpecular[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    float matEmission[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    float matShininess = 0.0f;
+
+    GLenum fogMode = GL_EXP;
+    float fogColor[4] = {0,0,0,0};
+    float fogDensity = 1.0f;
+    float fogStart = 0.0f;
+    float fogEnd = 1.0f;
+    
+    float clipPlanes[6][4] = { { 0.0f } } ;
+    bool clipPlaneOn[6] = { false };
+
+    GLint texEnvMode = GL_MODULATE; // GL_MODULATE, GL_DECAL, GL_BLEND, GL_REPLACE
 };
 
 // globals.render
@@ -45,6 +141,7 @@ struct shader_desc_t
 struct texture_desc_t
 {
     GLuint id = 0;
+    GLenum target = 0;
     unsigned int width;
     unsigned int height;
 };
@@ -73,11 +170,13 @@ struct glstate_t
 {
     bool enabledVertProgARB = false;
     bool enabledFragProgARB = false;
-    float clipPlanes[6][4] = { { 0.0f } } ;
+    char lastPolygonMode = 0; // GL_FILL
     texture_desc_t* activeTexture = nullptr;
     GLuint activeQuery = 0;
     GLuint activeDrawBuffer = 0;
     GLuint activeReadBuffer = 0;
+    GLuint fakeVBO = 0;
+    GLenum activeTexUnit = GL_TEXTURE0;
     unsigned long long queriesTimeOffset = GetClock();
 };
 
@@ -113,9 +212,10 @@ struct glin_globals_t
     render_list_t render;
     glstate_t gl;
     arbstate_t arb;
+    matrices_type_stack_t matrix;
+    fixed_func_state_t ff;
 
     GLenum lastPrimitiveMode;
-    GLenum lastMatrixMode = GL_MODELVIEW;
     #ifdef USE_MAP_FOR_SHADERS_DESC
         std::unordered_map<GLuint, shader_desc_t*> shaders;
         std::unordered_map<GLuint, program_arb_t*> programsARB;

@@ -14,7 +14,7 @@ void WRAP(glDisableIndexed(GLenum target, GLuint index));
 void WRAP(glGetBooleanIndexedv(GLenum target, GLuint index, GLboolean *data));
 void WRAP(glPopClientAttrib());
 void WRAP(glPushClientAttrib(GLbitfield mask));
-
+void WRAP(glLogicOp(GLenum opcode))
 
 void WRAP(glGetProgramiv( GLuint program,GLenum pname,GLint *params));
 void WRAP(glGetIntegerv( GLenum pname, GLint * data));
@@ -29,4 +29,6 @@ void WRAP(glClearColor(GLclampf r, GLclampf g, GLclampf b, GLclampf a));
 void WRAP(glClear(GLbitfield mask));
 void WRAP(glGetDoublev(GLenum pname, GLdouble* data));
 void WRAP(glPixelStoref(GLenum pname, GLfloat param));
-
+void WRAP(glDrawArrays(GLenum mode, GLint first, GLsizei count));
+void WRAP(glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices));
+void WRAP(glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const GLvoid *indices));

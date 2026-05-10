@@ -28,6 +28,8 @@ EGLBoolean (*pEGL_ReleaseThread) (void);
 EGLBoolean (*pEGL_SwapBuffers) (EGLDisplay dpy, EGLSurface draw);
 EGLBoolean (*pEGL_SwapInterval) (EGLDisplay dpy, EGLint interval);
 EGLBoolean (*pEGL_Terminate) (EGLDisplay dpy);
+const char* (*pEGL_QueryString) (EGLDisplay dpy, EGLint name);
+EGLDisplay (*pEGL_GetCurrentDisplay) ();
 
 static void* StaticEGLInit()
 {
@@ -57,6 +59,8 @@ static void* StaticEGLInit()
     pEGL_SwapBuffers = (EGLBoolean(*)(EGLDisplay dpy, EGLSurface draw))dlsym(ret, "eglSwapBuffers");
     pEGL_SwapInterval = (EGLBoolean(*)(EGLDisplay dpy, EGLint interval))dlsym(ret, "eglSwapInterval");
     pEGL_Terminate = (EGLBoolean(*)(EGLDisplay dpy))dlsym(ret, "eglTerminate");
+    pEGL_QueryString = (const char*(*)(EGLDisplay dpy, EGLint name))dlsym(ret, "eglQueryString");
+    pEGL_GetCurrentDisplay = (EGLDisplay(*)())dlsym(ret, "eglGetCurrentDisplay");
     return ret;
 }
 static void* eglLib = StaticEGLInit();
@@ -97,6 +101,8 @@ GLINAPI EGLBoolean EXPORT eglSwapBuffers(EGLDisplay dpy, EGLSurface draw) { retu
 GLINAPI EGLBoolean EXPORT eglSwapInterval(EGLDisplay dpy, EGLint interval) { return pEGL_SwapInterval(dpy, interval); }
 GLINAPI EGLBoolean EXPORT eglTerminate(EGLDisplay dpy) { return pEGL_Terminate(dpy); }
 GLINAPI EGLenum EXPORT eglQueryAPI() { return EGL_OPENGL_API; }
+GLINAPI const char* EXPORT eglQueryString(EGLDisplay dpy, EGLint name) { return pEGL_QueryString(dpy, name); }
+GLINAPI EGLDisplay EXPORT eglGetCurrentDisplay() { return pEGL_GetCurrentDisplay(); }
 
 GLINAPI void(* EXPORT eglGetProcAddress(const char *name))(void)
 {
@@ -118,6 +124,9 @@ GLINAPI void(* EXPORT eglGetProcAddress(const char *name))(void)
     EGL_MAP(eglSwapInterval);
     EGL_MAP(eglTerminate);
     EGL_MAP(eglQueryAPI);
-    //return (void(*)())GLIN_GetProcAddress(name);
+    EGL_MAP(eglQueryString);
+    EGL_MAP(eglGetCurrentDisplay);
+    
+    return (void(*)())GLIN_GetProcAddress(name);
     return NULL;
 }

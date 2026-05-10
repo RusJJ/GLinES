@@ -1,7 +1,6 @@
 // There's a lot of functions that are in ES3.2 library! Should i change it in the future to support ES 3.0?
 
 AS_MAP(glBufferStorage, glBufferStorageEXT);
-GL_ALL(glActiveTexture);
 GL_ALL(glAttachShader);
 AS_ALL(glAttachObject, glAttachShader);
 GL_ALL(glBindAttribLocation);
@@ -41,8 +40,8 @@ GL_ALL(glDetachShader);
 AS_ALL(glDetachObject, glDetachShader);
 GLIN_ALL(glDisable);
 GL_ALL(glDisableVertexAttribArray);
-GL_ALL(glDrawArrays);
-GL_ALL(glDrawElements);
+GLIN_ALL(glDrawArrays);
+GLIN_ALL(glDrawElements);
 GLIN_ALL(glEnable);
 GL_ALL(glEnableVertexAttribArray);
 GL_ALL(glFinish);
@@ -137,7 +136,7 @@ GL_ALL(glVertexAttrib4fv);
 GL_ALL(glVertexAttribPointer);
 GL_ALL(glViewport);
 GL_ALL(glReadBuffer);
-GL_ALL(glDrawRangeElements);
+GLIN_ALL(glDrawRangeElements);
 GL_ALL(glTexImage3D);
 GL_ALL(glTexSubImage3D);
 GL_ALL(glCopyTexSubImage3D);

@@ -9,3 +9,5 @@ void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum internalform
 void WRAP(glTexImage2DMultisample(GLenum target, GLsizei samples, GLenum internalFormat, GLsizei width, GLsizei height, GLboolean fixedSampleLocations));
 void WRAP(glTexImage3DMultisample(GLenum target, GLsizei samples, GLenum internalFormat, GLsizei width, GLsizei height, GLsizei depth, GLboolean fixedSampleLocations));
 void WRAP(glFramebufferTexture3D(GLenum target, GLenum attachment,  GLenum textarget, GLuint texture, GLint level, GLint layer));
+void WRAP(glActiveTexture(GLenum texunit));
+void WRAP(glBindMultiTexture(GLenum texunit, GLenum target, GLuint texture));

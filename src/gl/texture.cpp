@@ -130,6 +130,7 @@ void WRAP(glGenTextures(GLsizei n, GLuint * textures))
             tex = new texture_desc_t{};
             globals->textures[textures[i]] = tex;
             tex->id = textures[i];
+            tex->target = 0;
 			tex->width = tex->height = 0;
         }
     }
@@ -140,7 +141,11 @@ void WRAP(glDeleteTextures(GLsizei n, GLuint * textures))
     static int i = 0;
     for(i = 0; i < n; ++i)
     {
-        delete globals->textures[textures[i]];
+        if(globals->textures[textures[i]])
+        {
+            delete globals->textures[textures[i]];
+            globals->textures[textures[i]] = NULL;
+        }
     }
     glDeleteTextures(n, textures);
 }
@@ -173,6 +178,7 @@ void WRAP(glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei
 
     globals->gl.activeTexture->width = width;
     globals->gl.activeTexture->height = height;
+    globals->gl.activeTexture->target = target;
     
     glTexImage2D(target, level, internalformat, width, height, border, format, type, data);
 }
@@ -245,6 +251,34 @@ void WRAP(glFramebufferTexture3D(GLenum target, GLenum attachment,  GLenum texta
 {
     // TODO: textarget logic?
     glFramebufferTextureLayer(target, attachment, texture, level, layer);
+}
+
+void WRAP(glActiveTexture(GLenum texunit))
+{
+    if(globals->gl.activeTexUnit != texunit)
+    {
+        glActiveTexture(texunit);
+        globals->gl.activeTexUnit = texunit;
+    }
+}
+
+void WRAP(glBindMultiTexture(GLenum texunit, GLenum target, GLuint texture))
+{
+    if(globals->gl.activeTexUnit == texunit)
+    {
+        glBindTexture(target, texture);
+    }
+    else
+    {
+        glActiveTexture(texunit);
+        glBindTexture(target, texture);
+        glActiveTexture(globals->gl.activeTexUnit);
+    }
+}
+
+void WRAP(glBindTextureUnit(GLuint unit, GLuint texture))
+{
+    
 }
 
 //void WRAP(glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum internalformat, GLsizei imageSize, const void * data))

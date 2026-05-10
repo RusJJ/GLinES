@@ -13,9 +13,9 @@
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 #if defined(SYS64)
-    #define RET_CMP(__fn_name, __fn) if(strcmp(name, __fn_name) == 0) { DBG("GLinES returned 0x%LX for %s", (unsigned long long)__fn, __fn_name); return (void*)__fn; }
+    #define RET_CMP(__fn_name, __fn) if(strcmp(name, __fn_name) == 0) { DBG("GLinES returned 0x%016llX for %s", (unsigned long long)__fn, __fn_name); return (void*)__fn; }
 #else
-    #define RET_CMP(__fn_name, __fn) if(strcmp(name, __fn_name) == 0) { DBG("GLinES returned 0x%X for %s", (unsigned int)__fn, __fn_name); return (void*)__fn; }
+    #define RET_CMP(__fn_name, __fn) if(strcmp(name, __fn_name) == 0) { DBG("GLinES returned 0x%08X for %s", (unsigned int)__fn, __fn_name); return (void*)__fn; }
 #endif
 #define GL_MAP(__fn_name)                       RET_CMP(#__fn_name,       __fn_name)
 #define GL_ARB(__fn_name)                       RET_CMP(#__fn_name "ARB", __fn_name)
@@ -109,6 +109,8 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glTexImage2DMultisample);
     GLIN_ALL(glTexImage3DMultisample);
     GLIN_ALL(glFramebufferTexture3D);
+    GLIN_ALL(glActiveTexture);
+    GLIN_ALL(glBindMultiTexture);
 // Render
     GLIN_ALL(glVertexAttrib3d);
     GLIN_ALL(glMultiDrawArrays);
@@ -145,6 +147,13 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glGetBufferSubData);
     GLIN_ALL(glBindFramebuffer);
     GLIN_ALL(glCheckFramebufferStatus);
+// Matrix
+    GLIN_ALL(glMatrixMode);
+    GLIN_ALL(glLoadIdentity);
+    GLIN_ALL(glPushMatrix);
+    GLIN_ALL(glPopMatrix);
+    GLIN_ALL(glLoadMatrixf);
+    GLIN_ALL(glOrtho);
 // Probably complete
     GLIN_ARB(glBindProgram);
     GLIN_ARB(glProgramString);
@@ -155,8 +164,6 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glGetCompressedTexImage);
     GLIN_MAP(glBegin);
     GLIN_MAP(glEnd);
-    GLIN_MAP(glOrtho);
-    GLIN_ALL(glMatrixMode);
     GLIN_MAP(glVertex3f);
     GLIN_MAP(glClipPlane);
     GLIN_MAP(glClipPlanef);
@@ -176,6 +183,7 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glGetBooleanIndexedv);
     GLIN_ALL(glPushClientAttrib);
     GLIN_ALL(glPopClientAttrib);
+    GLIN_ALL(glLogicOp);
 // Wraps (debug purpose)
     //GLIN_ALL(glClearColor);
 // Default ES 3.x functions

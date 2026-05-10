@@ -1,5 +1,7 @@
-#ifndef GLIN2GLES_H
-#define GLIN2GLES_H
+#ifndef GLINES_H
+#define GLINES_H
+
+    #define DEBUG
 
     #include "GLinES_Config.h"
     #define GL_GLEXT_PROTOTYPES
@@ -61,4 +63,4 @@
 
     #include "globals.h"
 
-#endif // GLIN2GLES_H
+#endif // GLINES_H

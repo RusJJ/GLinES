@@ -10,6 +10,12 @@ void WRAP(glTexCoord2f(GLfloat s, GLfloat t))
 }
 void WRAP(glPolygonMode(GLenum face, GLenum mode))
 {
+    switch(mode)
+    {
+        case 0x1B00: globals->gl.lastPolygonMode = 1; break; // GL_POINT 0x1B00
+        case 0x1B01: globals->gl.lastPolygonMode = 2; break; // GL_LINE 0x1B01
+        default: globals->gl.lastPolygonMode = 0; break; // GL_FILL 0x1B02
+    }
     DBG("glPolygonMode");
 }
 void WRAP(glPopAttrib())
@@ -63,6 +69,10 @@ void WRAP(glPopClientAttrib())
 void WRAP(glPushClientAttrib(GLbitfield mask))
 {
     DBG("glPushClientAttrib");
+}
+void WRAP(glLogicOp(GLenum opcode))
+{
+    globals->ff.logicOpMode = opcode;
 }
 
 void WRAP(glGetProgramiv(GLenum target,GLenum pname,GLint *params)) // ARB only
@@ -182,6 +192,27 @@ void WRAP(glEnable(GLenum cap))
         case 0x8804: //GL_FRAGMENT_PROGRAM_ARB:
             globals->gl.enabledFragProgARB = true;
             break;
+            
+        case GL_LIGHTING:
+            globals->ff.lightingEnabled = true;
+            break;
+            
+        case GL_NORMALIZE:
+            globals->ff.normalizeEnabled = true;
+            break;
+            
+        case GL_FOG:
+            globals->ff.fogEnabled = true;
+            break;
+            
+        case 0x0BF1: //GL_LOGIC_OP
+            globals->ff.logicOpEnabled = true;
+            break;
+            
+        case GL_CLIP_PLANE0: case GL_CLIP_PLANE1: case GL_CLIP_PLANE2:
+        case GL_CLIP_PLANE3: case GL_CLIP_PLANE4: case GL_CLIP_PLANE5:
+            globals->ff.clipPlaneOn[cap - GL_CLIP_PLANE0] = true;
+            break;
 
         default:
             glEnable(cap);
@@ -199,6 +230,27 @@ void WRAP(glDisable(GLenum cap))
             
         case 0x8804: //GL_FRAGMENT_PROGRAM_ARB:
             globals->gl.enabledFragProgARB = false;
+            break;
+            
+        case GL_LIGHTING:
+            globals->ff.lightingEnabled = false;
+            break;
+            
+        case GL_NORMALIZE:
+            globals->ff.normalizeEnabled = false;
+            break;
+            
+        case GL_FOG:
+            globals->ff.fogEnabled = false;
+            break;
+            
+        case 0x0BF1: //GL_LOGIC_OP
+            globals->ff.logicOpEnabled = false;
+            break;
+            
+        case GL_CLIP_PLANE0: case GL_CLIP_PLANE1: case GL_CLIP_PLANE2:
+        case GL_CLIP_PLANE3: case GL_CLIP_PLANE4: case GL_CLIP_PLANE5:
+            globals->ff.clipPlaneOn[cap - GL_CLIP_PLANE0] = false;
             break;
 
         default:
@@ -242,4 +294,22 @@ void WRAP(glGetDoublev(GLenum pname, GLdouble* data))
 void WRAP(glPixelStoref(GLenum pname, GLfloat param))
 {
     glPixelStorei(pname, param);
+}
+
+void WRAP(glDrawArrays(GLenum mode, GLint first, GLsizei count))
+{
+    if(globals->gl.lastPolygonMode != 0) mode = GL_LINE_STRIP;
+    WRAPCALL(glDrawArrays(mode, first, count));
+}
+
+void WRAP(glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices))
+{
+    if(globals->gl.lastPolygonMode != 0) mode = GL_LINE_STRIP;
+    WRAPCALL(glDrawElements(mode, count, type, indices));
+}
+
+void WRAP(glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const GLvoid *indices))
+{
+    if(globals->gl.lastPolygonMode != 0) mode = GL_LINE_STRIP;
+    WRAPCALL(glDrawRangeElements(mode, start, end, count, type, indices));
 }

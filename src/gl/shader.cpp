@@ -52,15 +52,15 @@ void WRAP(glCompileShader(GLuint shader))
     glGetShaderSource(shader, sizeof(szShaderSource), &length, szShaderSource);
     PreprocessShader(szShaderSource, isVertex);
 
-    sprintf(sss, "/sdcard/srceng2/shaders_org/shader_%d.txt", shader);
-    shaderFile = fopen(sss, "w+");
-    fputs(szShaderSource, shaderFile);
-    fclose(shaderFile); // TODO: remove debug
-
     shaderId = shader;
     const char* pNewShader = ConvertShader(szShaderSource, isVertex);
     glShaderSource(shader, 1, (const GLchar**)&pNewShader, &shaderLen);
     glCompileShader(shader);
+    
+    sprintf(sss, "/sdcard/srceng2/shaders_org/shader_%d.txt", shader);
+    shaderFile = fopen(sss, "w+");
+    fputs(szShaderSource, shaderFile);
+    fclose(shaderFile); // TODO: remove debug
 
     glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
     if(status == GL_FALSE)
@@ -209,7 +209,7 @@ static const std::string strNewLine = "\n";
         newShader += "#version 320 es\n#define attribute in\n"; \
         if(!bIsVertexShader) newShader += "#define texture1D(s, t) texture(s, vec2(x, 0.5))\n" \
         "#define texture2D texture\n#define texture3D texture\n#define textureCube texture\n#define texture2DProj textureProj\n" \
-        "#define shadow2D texture\n"; \
+        "#define shadow2D texture\n#define texture2DLod textureLod\n"; \
         newShader += (bIsVertexShader ? "#define varying out\n" : "#define varying in\n"); \
         /* Shader Extensions! */ \
         /* TODO: */ \
