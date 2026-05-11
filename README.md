@@ -2,8 +2,8 @@
 OpenGL in OpenGLES. That was my funny project to let games run on GLES 3.2 without extreme changes.
 
 # Is this working?!
-I wish to say YES! But for the moment the main problem is shaders (i think...). Not really sure, that project was abandoned 2 years ago because of IRL problems.
+It actually works! The problem is that it's not completed yet.
 
-If you wanna continue working on it, you're free to use it in terms of MIT license!
+This is my little fun project to get desktop OpenGL on mobile allowing minimal code changes while porting PC titles to mobile. 
 
-I would like to see this working some time.
+I would like to see this being completed some time. Currently i'm targeting OpenGL 3.3 with the future expansion up to the OpenGL 4.x
