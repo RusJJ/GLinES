@@ -9,11 +9,12 @@
 #include "gl_texture.h"
 
 #include <unordered_map>
+#include <string>
 
 enum eShaderFlags
 {
     NONE = 0,
-    
+    SF_TEXTURED = (1 << 0),
 };
 
 struct fixed_program_t
@@ -21,6 +22,7 @@ struct fixed_program_t
     GLuint program;
     GLint uMVP = -1;
     GLint uProj = -1;
+    GLint uDiffuse = -1;
 };
 
 unsigned int g_nFixedPipelineShaderFlags = 0;
@@ -33,44 +35,64 @@ inline void BuildShaderFlag()
 {
     g_nFixedPipelineShaderFlags = 0;
     
+    if(globals->render.texture) g_nFixedPipelineShaderFlags |= SF_TEXTURED;
+}
+
+std::string BuildVertexShader()
+{
+    std::string s = "#version 320 es\nprecision highp float;\n";
+    s += "layout(location = 0) in vec3 a_position;\n";
+    s += "layout(location = 1) in vec4 a_color;\n";
+    s += "layout(location = 2) in vec2 a_texCoord;\n";
+    s += "layout(location = 3) in vec3 a_normal;\n";
+    s += "uniform mat4 u_modelViewMatrix;";
+    s += "uniform mat4 u_projectionMatrix;\n";
+    s += "out vec4 v_color;\n";
+    s += "out vec2 v_texCoord;\n";
+    
+    s += "void main() {\n";
+    s += "  gl_Position = u_projectionMatrix * u_modelViewMatrix * vec4(a_position, 1.0);\n";
+    s += "  v_color = a_color;\n";
+    s += "  v_texCoord = a_texCoord;\n";
+    s += "}";
+    return s;
+}
+
+std::string BuildFragmentShader()
+{
+    std::string s = "#version 320 es\nprecision mediump float;\n";
+    s += "in vec4 v_color;\n";
+    s += "in vec2 v_texCoord;\n";
+    s += "uniform sampler2D u_texture;\n";
+    s += "out vec4 out_FragColor;\n";
+    
+    s += "void main() {\n";
+    if(g_nFixedPipelineShaderFlags & SF_TEXTURED)
+    {
+        s += "  out_FragColor = v_color * texture(u_texture, v_texCoord);\n";
+    }
+    else
+    {
+        s += "  out_FragColor = v_color;\n";
+    }
+    s += "}";
+    return s;
 }
 
 unsigned int BuildFixedProgram()
 {
-    const char* shaderVertex = 
-    "#version 320 es\n"
-    "precision highp float;\n"
-    "layout(location = 0) in vec3 a_position;\n"
-    "layout(location = 1) in vec4 a_color;\n"
-    "layout(location = 2) in vec2 a_texCoord;\n"
-    "layout(location = 3) in vec3 a_normal;\n"
-    "uniform mat4 u_modelViewMatrix;\n"
-    "uniform mat4 u_projectionMatrix;\n"
-    "out vec4 v_color;\n"
-    "out vec2 v_texCoord;\n"
-    "void main() {\n"
-    "    gl_Position = u_projectionMatrix * u_modelViewMatrix * vec4(a_position, 1.0);\n"
-    "    v_color = a_color;\n"
-    "    v_texCoord = a_texCoord;\n"
-    "}";
+    std::string vertexS = BuildVertexShader();
+    std::string fragS = BuildFragmentShader();
     
-    const char* shaderFragment = 
-    "#version 320 es\n"
-    "precision mediump float;\n"
-    "in vec4 v_color;\n"
-    "in vec2 v_texCoord;\n"
-    "uniform sampler2D u_texture;\n"
-    "out vec4 fragColor;\n"
-    "void main() {\n"
-    "    fragColor = v_color;\n"
-    "}";
+    const char* vs = vertexS.c_str();
+    const char* fs = fragS.c_str();
 
     GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertex, 1, &shaderVertex, 0);
+    glShaderSource(vertex, 1, &vs, 0);
     glCompileShader(vertex);
 
     GLuint fragment = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragment, 1, &shaderFragment, 0);
+    glShaderSource(fragment, 1, &fs, 0);
     glCompileShader(fragment);
 
     GLuint program = glCreateProgram();
@@ -105,6 +127,7 @@ void UseFixedProgram()
         
         program->uMVP = glGetUniformLocation(g_nUberShader, "u_modelViewMatrix");
         program->uProj = glGetUniformLocation(g_nUberShader, "u_projectionMatrix");
+        program->uDiffuse = glGetUniformLocation(g_nUberShader, "u_texture");
     }
     
     glUseProgram(g_nUberShader);
@@ -116,6 +139,10 @@ void UseFixedProgram()
     if(activeFixedProgram->uProj != -1)
     {
         glUniformMatrix4fv(activeFixedProgram->uProj, 1, GL_FALSE, globals->matrix.projection.Current().data());
+    }
+    if(activeFixedProgram->uDiffuse != -1)
+    {
+        glUniform1i(activeFixedProgram->uDiffuse, 0);
     }
 }
 
@@ -235,6 +262,6 @@ void TransformFixedVerts()
     
     // TODO: UBO
 
-    glDrawArrays(drawMode, 0, finalVerts.size());
+    WRAP(glDrawArrays(drawMode, 0, finalVerts.size()));
     glBindVertexArray(0);
 }

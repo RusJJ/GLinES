@@ -75,6 +75,11 @@ void WRAP(glVertex3f(GLfloat x, GLfloat y, GLfloat z))
     globals->render.normals.push_back(globals->render.normal);
 }
 
+void WRAP(glVertex3i(GLint x, GLint y, GLint z))
+{
+    WRAP(glVertex3f(x, y, z));
+}
+
 void WRAP(glVertex2f(GLfloat x, GLfloat y))
 {
     WRAP(glVertex3f(x, y, 0.0f));
@@ -299,7 +304,14 @@ void WRAP(glLightModelf(GLenum pname, GLfloat param))
 
 void WRAP(glLightModelfv(GLenum pname, const GLfloat* params))
 {
-    
+    if(pname == GL_LIGHT_MODEL_AMBIENT)
+    {
+        memcpy(&globals->render.ambient, params, 4 * sizeof(float));
+    }
+    else if(pname == GL_LIGHT_MODEL_TWO_SIDE)
+    {
+        
+    }
 }
 
 void WRAP(glMaterialf(GLenum face, GLenum pname, GLfloat param))

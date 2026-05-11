@@ -188,6 +188,10 @@ void WRAP(glEnable(GLenum cap))
         case GL_LIGHT4: case GL_LIGHT5: case GL_LIGHT6: case GL_LIGHT7:
             globals->ff.lightEnabled[cap - GL_LIGHT0] = true;
             break;
+            
+        case GL_TEXTURE_2D:
+            globals->render.texture = true;
+            break;
 
         default:
             glEnable(cap);
@@ -231,6 +235,10 @@ void WRAP(glDisable(GLenum cap))
         case GL_LIGHT0: case GL_LIGHT1: case GL_LIGHT2: case GL_LIGHT3:
         case GL_LIGHT4: case GL_LIGHT5: case GL_LIGHT6: case GL_LIGHT7:
             globals->ff.lightEnabled[cap - GL_LIGHT0] = false;
+            break;
+            
+        case GL_TEXTURE_2D:
+            globals->render.texture = false;
             break;
 
         default:

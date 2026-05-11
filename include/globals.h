@@ -166,6 +166,7 @@ struct fixed_func_state_t
 struct render_list_t
 {
     bool begin = false;
+    bool texture = false;
     vector4_t color = {1.0f, 1.0f, 1.0f, 1.0f};
     vector2_t texcoord = {0.0f, 0.0f};
     vector3_t normal = {0.0f, 0.0f, 1.0f};
@@ -178,6 +179,8 @@ struct render_list_t
     
     GLuint fixedVAO = 0;
     GLuint fixedVBO[4] = { 0 };
+    
+    vector4_t ambient = {0.2f, 0.2f, 0.2f, 1.0f};
 };
 
 // globals.shaders[*]
