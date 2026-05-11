@@ -288,5 +288,6 @@ void WRAP(glGetActiveUniformName(GLuint program, GLuint uniformIndex, GLsizei bu
 
 void WRAP(glUseProgram(GLuint program))
 {
+    globals->gl.activeProgram = program;
     glUseProgram(program);
 }

@@ -18,14 +18,26 @@ inline unsigned long long GetClock()
 
 struct vector2_t
 {
+    bool operator==(const vector2_t& v)
+    {
+        return (x == v.x && y == v.y);
+    }
     float x, y;
 };
 struct vector3_t
 {
+    bool operator==(const vector3_t& v)
+    {
+        return (x == v.x && y == v.y && z == v.z);
+    }
     float x, y, z;
 };
 struct vector4_t
 {
+    bool operator==(const vector4_t& v)
+    {
+        return (x == v.x && y == v.y && z == v.z && w == v.w);
+    }
     float x, y, z, w;
 };
 struct matrix4_t
@@ -36,6 +48,46 @@ struct matrix4_t
     {
         return (GLfloat*)&m[0];
     }
+    bool operator==(const matrix4_t& v)
+    {
+        for(int i = 0; i < 16; ++i) if(m[i] != v.m[i]) return false;
+        return true;
+    }
+    matrix4_t operator*(const matrix4_t& v)
+    {
+        return MulRet(v);
+    }
+    matrix4_t operator*(const float* v)
+    {
+        return MulRet(*(const matrix4_t*)v);
+    }
+    matrix4_t& operator*=(const matrix4_t& v)
+    {
+        *this = *this * v;
+        return *this;
+    }
+    matrix4_t& operator*=(const float* v)
+    {
+        *this = *this * *(const matrix4_t*)v;
+        return *this;
+    }
+    matrix4_t MulRet(const matrix4_t& v)
+    {
+        matrix4_t res;
+        for (int col = 0; col < 4; ++col)
+        {
+            for (int row = 0; row < 4; ++row)
+            {
+                res.m[col * 4 + row] = 
+                    m[0 * 4 + row] * v.m[col * 4 + 0] +
+                    m[1 * 4 + row] * v.m[col * 4 + 1] +
+                    m[2 * 4 + row] * v.m[col * 4 + 2] +
+                    m[3 * 4 + row] * v.m[col * 4 + 3];
+            }
+        }
+        return res;
+    }
+    
     static inline matrix4_t Identity()
     {
         return matrix4_t
@@ -125,6 +177,10 @@ struct client_state_t
 };
 
 // globals.ff
+struct fixed_light_t
+{
+    
+};
 struct fixed_func_state_t
 {
     bool lightingEnabled = false;
@@ -150,7 +206,7 @@ struct fixed_func_state_t
     float matShininess = 0.0f;
 
     GLenum fogMode = GL_EXP;
-    float fogColor[4] = {0,0,0,0};
+    vector4_t fogColor = {0,0,0,0};
     float fogDensity = 1.0f;
     float fogStart = 0.0f;
     float fogEnd = 1.0f;
@@ -240,6 +296,7 @@ struct glstate_t
     GLuint activeReadBuffer = GL_COLOR_ATTACHMENT0;
     GLuint fakeVBO = 0;
     GLenum activeTexUnit = GL_TEXTURE0;
+    GLuint activeProgram = 0;
     unsigned long long queriesTimeOffset = GetClock();
 };
 

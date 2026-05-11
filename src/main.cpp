@@ -182,6 +182,11 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glPushMatrix);
     GLIN_ALL(glPopMatrix);
     GLIN_ALL(glLoadMatrixf);
+    GLIN_ALL(glMultMatrixf);
+    GLIN_ALL(glTranslatef);
+    GLIN_ALL(glScalef);
+    GLIN_ALL(glRotatef);
+    GLIN_ALL(glFrustum);
     GLIN_ALL(glOrtho);
 // Probably complete
     GLIN_ARB(glBindProgram);

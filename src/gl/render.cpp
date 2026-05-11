@@ -362,7 +362,7 @@ void WRAP(glFogfv(GLenum pname, const GLfloat *params))
 {
     if (pname == 0x0B66) // GL_FOG_COLOR
     {
-        memcpy(globals->ff.fogColor, params, 4 * sizeof(float));
+        memcpy(&globals->ff.fogColor, params, 4 * sizeof(float));
     }
 }
 
