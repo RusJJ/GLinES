@@ -256,27 +256,83 @@ GLboolean WRAP(glIsEnabled(GLenum cap))
             
         case 0x8804: //GL_FRAGMENT_PROGRAM_ARB:
             return globals->gl.enabledFragProgARB;
+            
+        case GL_LIGHTING:
+            return globals->ff.lightingEnabled;
+            
+        case GL_NORMALIZE:
+            return globals->ff.normalizeEnabled;
+            
+        case GL_FOG:
+            return globals->ff.fogEnabled;
+            
+        case 0x0BF1: //GL_LOGIC_OP
+            return globals->ff.logicOpEnabled;
+            
+        case GL_CLIP_PLANE0: case GL_CLIP_PLANE1: case GL_CLIP_PLANE2:
+        case GL_CLIP_PLANE3: case GL_CLIP_PLANE4: case GL_CLIP_PLANE5:
+            return globals->ff.clipPlaneOn[cap - GL_CLIP_PLANE0];
+            
+        case GL_LIGHT0: case GL_LIGHT1: case GL_LIGHT2: case GL_LIGHT3:
+        case GL_LIGHT4: case GL_LIGHT5: case GL_LIGHT6: case GL_LIGHT7:
+            return globals->ff.lightEnabled[cap - GL_LIGHT0];
+            
+        case GL_TEXTURE_2D:
+            return globals->render.texture;
+            
+        // TODO: more
 
         default:
             return glIsEnabled(cap);
     }
 }
 
-/*void WRAP(glClearColor(GLclampf r, GLclampf g, GLclampf b, GLclampf a))
-{
-    glClearColor(r, g, b, a);
-}*/
-
 void WRAP(glClear(GLbitfield mask))
 {
     glClear((mask & (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)));
 }
 
+void WRAP(glGetFloatv(GLenum pname, GLfloat* data))
+{
+    switch(pname)
+    {
+        default:
+            glGetFloatv(pname, data);
+            break;
+        
+        case GL_MODELVIEW_MATRIX:
+            memcpy(data, globals->matrix.modelview.Current().data(), 16 * sizeof(GLfloat));
+            break;
+        
+        case GL_PROJECTION_MATRIX:
+            memcpy(data, globals->matrix.projection.Current().data(), 16 * sizeof(GLfloat));
+            break;
+        
+        case GL_TEXTURE_MATRIX:
+            memcpy(data, globals->matrix.texture.Current().data(), 16 * sizeof(GLfloat));
+            break;
+            
+        // TODO: more
+    }
+}
+
 void WRAP(glGetDoublev(GLenum pname, GLdouble* data))
 {
-    GLfloat ret;
-    glGetFloatv(pname, &ret);
-    *data = ret;
+    int num = 0;
+    GLfloat ret[16];
+    switch(pname)
+    {
+        case GL_MODELVIEW_MATRIX:
+        case GL_PROJECTION_MATRIX:
+        case GL_TEXTURE_MATRIX:
+            num = 4;
+            break;
+            
+        // TODO: more
+    }
+    
+    WRAP(glGetFloatv(pname, ret));
+    for(int i = 0; i < num; ++i) data[i] = ret[i];
 }
 
 void WRAP(glPixelStoref(GLenum pname, GLfloat param))

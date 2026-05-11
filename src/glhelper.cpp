@@ -376,3 +376,14 @@ void TransformFixedVerts()
     WRAP(glDrawArrays(drawMode, 0, finalVerts.size()));
     glBindVertexArray(0);
 }
+
+void TransposeMatrix(const float* src, float* dst)
+{
+    for(int i = 0; i < 4; i++)
+    {
+        for(int j = 0; j < 4; j++)
+        {
+            dst[i * 4 + j] = src[j * 4 + i];
+        }
+    }
+}

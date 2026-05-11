@@ -87,6 +87,10 @@ struct matrix4_t
         }
         return res;
     }
+    matrix4_t TransposeRet()
+    {
+        
+    }
     
     static inline matrix4_t Identity()
     {

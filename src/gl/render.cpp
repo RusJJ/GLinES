@@ -61,11 +61,6 @@ void WRAP(glNormal3f(GLfloat nx, GLfloat ny, GLfloat nz))
     globals->render.normal = { nx, ny, nz };
 }
 
-void WRAP(glColorMaskIndexed(GLuint framebuffer, GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha))
-{
-    glColorMaski(framebuffer, red, green, blue, alpha);
-}
-
 void WRAP(glVertex3f(GLfloat x, GLfloat y, GLfloat z))
 {
     if(!globals->render.begin) return;

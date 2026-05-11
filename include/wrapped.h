@@ -21,6 +21,7 @@ void WRAP(glDrawBuffers(GLsizei n, const GLenum *bufs));
 void WRAP(glDrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, void *indices, GLint basevertex));
 void WRAP(glClearColor(GLclampf r, GLclampf g, GLclampf b, GLclampf a));
 void WRAP(glClear(GLbitfield mask));
+void WRAP(glGetFloatv(GLenum pname, GLfloat* data));
 void WRAP(glGetDoublev(GLenum pname, GLdouble* data));
 void WRAP(glPixelStoref(GLenum pname, GLfloat param));
 void WRAP(glDrawArrays(GLenum mode, GLint first, GLsizei count));

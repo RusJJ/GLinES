@@ -6,7 +6,6 @@ void WRAP(glColor3f(GLfloat red, GLfloat green, GLfloat blue));
 void WRAP(glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha));
 void WRAP(glColor4sv(const GLshort* v));
 void WRAP(glTexCoord2f(GLfloat s, GLfloat t));
-void WRAP(glColorMaskIndexed(GLuint framebuffer, GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha));
 void WRAP(glVertex3f(GLfloat x, GLfloat y, GLfloat z));
 void WRAP(glVertex3i(GLint x, GLint y, GLint z));
 void WRAP(glVertex2f(GLfloat x, GLfloat y));

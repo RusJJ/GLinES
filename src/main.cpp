@@ -97,9 +97,6 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
 {
 // Main
     GLIN_MAP(glGetString);
-    GLIN_MAP(glColor4f);
-    GLIN_MAP(glColor4sv);
-    GLIN_ALL(glColorMaskIndexed);
 // Textures
     GLIN_ALL(glGenTextures);
     GLIN_ALL(glDeleteTextures);
@@ -116,6 +113,8 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glBegin);
     GLIN_MAP(glEnd);
     GLIN_MAP(glColor3f);
+    GLIN_MAP(glColor4f);
+    GLIN_MAP(glColor4sv);
     GLIN_MAP(glVertex3f);
     GLIN_MAP(glVertex3i);
     GLIN_MAP(glVertex2f);
@@ -177,21 +176,33 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glBindFramebuffer);
     GLIN_ALL(glCheckFramebufferStatus);
 // Matrix
-    GLIN_ALL(glMatrixMode);
-    GLIN_ALL(glLoadIdentity);
-    GLIN_ALL(glPushMatrix);
-    GLIN_ALL(glPopMatrix);
-    GLIN_ALL(glLoadMatrixf);
-    GLIN_ALL(glMultMatrixf);
-    GLIN_ALL(glTranslatef);
-    GLIN_ALL(glScalef);
-    GLIN_ALL(glRotatef);
-    GLIN_ALL(glFrustum);
-    GLIN_ALL(glOrtho);
+    GLIN_MAP(glMatrixMode);
+    GLIN_MAP(glLoadIdentity);
+    GLIN_MAP(glPushMatrix);
+    GLIN_MAP(glPopMatrix);
+    GLIN_MAP(glLoadMatrixf);
+    GLIN_MAP(glLoadMatrixd);
+    GLIN_MAP(glMultMatrixf);
+    GLIN_MAP(glMultMatrixd);
+    GLIN_MAP(glTranslatef);
+    GLIN_MAP(glTranslated);
+    GLIN_MAP(glScalef);
+    GLIN_MAP(glScaled);
+    GLIN_MAP(glRotatef);
+    GLIN_MAP(glRotated);
+    GLIN_MAP(glFrustum);
+    GLIN_MAP(glFrustumf);
+    GLIN_MAP(glOrtho);
+    GLIN_MAP(glOrthof);
+    GLIN_MAP(glLoadTransposeMatrixf);
+    GLIN_MAP(glLoadTransposeMatrixd);
+    GLIN_MAP(glMultTransposeMatrixf);
+    GLIN_MAP(glMultTransposeMatrixd);
 // Probably complete
     GLIN_ARB(glBindProgram);
     GLIN_ARB(glProgramString);
     GLIN_ARB(glGetProgramString);
+    GLIN_ALL(glGetFloatv);
     GLIN_ALL(glGetDoublev);
     GLIN_ALL(glPixelStoref);
 // Incomplete
