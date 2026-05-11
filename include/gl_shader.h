@@ -52,6 +52,7 @@ void WRAP(glCompileShader(GLuint shader));
 GLuint WRAP(glCreateShader(GLenum type));
 void WRAP(glLinkProgram(GLuint program));
 void WRAP(glGetActiveUniformName(GLuint program, GLuint uniformIndex, GLsizei bufSize, GLsizei* length, char* name));
+void WRAP(glUseProgram(GLuint program));
 
 void PreprocessShader(char* pszShaderSource, bool bIsVertexShader);
 const char* ConvertShader(char* pszShaderSource, bool bIsVertexShader);

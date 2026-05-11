@@ -1,20 +1,14 @@
 void WRAP(glGetCompressedTexImage(GLenum target, GLint lod, GLvoid *img));
-void WRAP(glTexCoord2f(GLfloat s, GLfloat t));
-void WRAP(glPolygonMode(GLenum face, GLenum mode));
 void WRAP(glPopAttrib());
 void WRAP(glPushAttrib(GLbitfield mask));
-void WRAP(glEnableClientState(GLenum array));
-void WRAP(glDisableClientState(GLenum array));
 void WRAP(glClientActiveTexture(GLenum texture));
-void WRAP(glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer));
-void WRAP(glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer));
 void WRAP(glProgramEnvParameters4fv(GLenum target, GLuint index, GLsizei count, const GLfloat *params));
 void WRAP(glEnableIndexed(GLenum target, GLuint index));
 void WRAP(glDisableIndexed(GLenum target, GLuint index));
 void WRAP(glGetBooleanIndexedv(GLenum target, GLuint index, GLboolean *data));
 void WRAP(glPopClientAttrib());
 void WRAP(glPushClientAttrib(GLbitfield mask));
-void WRAP(glLogicOp(GLenum opcode))
+void WRAP(glLogicOp(GLenum opcode));
 
 void WRAP(glGetProgramiv( GLuint program,GLenum pname,GLint *params));
 void WRAP(glGetIntegerv( GLenum pname, GLint * data));

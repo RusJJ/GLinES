@@ -122,8 +122,6 @@ GL_ALL(glUniform4iv);
 GL_ALL(glUniformMatrix2fv);
 GL_ALL(glUniformMatrix3fv);
 GL_ALL(glUniformMatrix4fv);
-GL_ALL(glUseProgram);
-AS_ALL(glUseProgramObject, glUseProgram);
 GL_ALL(glValidateProgram);
 GL_ALL(glVertexAttrib1f);
 GL_ALL(glVertexAttrib1fv);

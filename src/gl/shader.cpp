@@ -285,3 +285,8 @@ void WRAP(glGetActiveUniformName(GLuint program, GLuint uniformIndex, GLsizei bu
 {
     glGetProgramResourceName(program, GL_UNIFORM, uniformIndex, bufSize, length, name);
 }
+
+void WRAP(glUseProgram(GLuint program))
+{
+    glUseProgram(program);
+}

@@ -4,20 +4,6 @@ void WRAP(glGetCompressedTexImage(GLenum target, GLint lod, GLvoid *img))
 {
     DBG("glGetCompressedTexImage");
 }
-void WRAP(glTexCoord2f(GLfloat s, GLfloat t))
-{
-    DBG("glTexCoord2f");
-}
-void WRAP(glPolygonMode(GLenum face, GLenum mode))
-{
-    switch(mode)
-    {
-        case 0x1B00: globals->gl.lastPolygonMode = 1; break; // GL_POINT 0x1B00
-        case 0x1B01: globals->gl.lastPolygonMode = 2; break; // GL_LINE 0x1B01
-        default: globals->gl.lastPolygonMode = 0; break; // GL_FILL 0x1B02
-    }
-    DBG("glPolygonMode");
-}
 void WRAP(glPopAttrib())
 {
     DBG("glPopAttrib");
@@ -26,25 +12,9 @@ void WRAP(glPushAttrib(GLbitfield mask))
 {
     DBG("glPushAttrib");
 }
-void WRAP(glEnableClientState(GLenum array))
-{
-    DBG("glEnableClientState");
-}
-void WRAP(glDisableClientState(GLenum array))
-{
-    DBG("glDisableClientState");
-}
 void WRAP(glClientActiveTexture(GLenum texture))
 {
     DBG("glClientActiveTexture");
-}
-void WRAP(glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer))
-{
-    DBG("glVertexPointer");
-}
-void WRAP(glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const GLvoid *pointer))
-{
-    DBG("glTexCoordPointer");
 }
 void WRAP(glProgramEnvParameters4fv(GLenum target, GLuint index, GLsizei count, const GLfloat *params))
 {
@@ -213,6 +183,11 @@ void WRAP(glEnable(GLenum cap))
         case GL_CLIP_PLANE3: case GL_CLIP_PLANE4: case GL_CLIP_PLANE5:
             globals->ff.clipPlaneOn[cap - GL_CLIP_PLANE0] = true;
             break;
+            
+        case GL_LIGHT0: case GL_LIGHT1: case GL_LIGHT2: case GL_LIGHT3:
+        case GL_LIGHT4: case GL_LIGHT5: case GL_LIGHT6: case GL_LIGHT7:
+            globals->ff.lightEnabled[cap - GL_LIGHT0] = true;
+            break;
 
         default:
             glEnable(cap);
@@ -251,6 +226,11 @@ void WRAP(glDisable(GLenum cap))
         case GL_CLIP_PLANE0: case GL_CLIP_PLANE1: case GL_CLIP_PLANE2:
         case GL_CLIP_PLANE3: case GL_CLIP_PLANE4: case GL_CLIP_PLANE5:
             globals->ff.clipPlaneOn[cap - GL_CLIP_PLANE0] = false;
+            break;
+            
+        case GL_LIGHT0: case GL_LIGHT1: case GL_LIGHT2: case GL_LIGHT3:
+        case GL_LIGHT4: case GL_LIGHT5: case GL_LIGHT6: case GL_LIGHT7:
+            globals->ff.lightEnabled[cap - GL_LIGHT0] = false;
             break;
 
         default:

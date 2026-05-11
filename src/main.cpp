@@ -92,6 +92,7 @@ GLINAPI void* EXPORT GLIN_ProcAddr(void* lib, const char* name)
     return ret;
 }
 
+// TODO: wrapped funcs should be there. every single one.
 GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
 {
 // Main
@@ -112,15 +113,42 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glActiveTexture);
     GLIN_ALL(glBindMultiTexture);
 // Render
-    GLIN_ALL(glVertexAttrib3d);
-    GLIN_ALL(glMultiDrawArrays);
-    GLIN_ALL(glMultiDrawElements);
-    GLIN_ALL(glMultiDrawElementsBaseVertex);
+    GLIN_MAP(glBegin);
+    GLIN_MAP(glEnd);
+    GLIN_MAP(glColor3f);
+    GLIN_MAP(glVertex3f);
+    GLIN_MAP(glVertex2f);
+    GLIN_MAP(glVertex2i);
+    GLIN_MAP(glTexCoord2f);
+    GLIN_MAP(glClipPlane);
+    GLIN_MAP(glClipPlanef);
+    GLIN_MAP(glVertexAttrib3d);
+    GLIN_MAP(glMultiDrawArrays);
+    GLIN_MAP(glMultiDrawElements);
+    GLIN_MAP(glMultiDrawElementsBaseVertex);
+    GLIN_MAP(glShadeModel);
+    GLIN_MAP(glEnableClientState);
+    GLIN_MAP(glDisableClientState);
+    GLIN_MAP(glVertexPointer);
+    GLIN_MAP(glColorPointer);
+    GLIN_MAP(glTexCoordPointer);
+    GLIN_MAP(glNormalPointer);
+    GLIN_MAP(glLightf);
+    GLIN_MAP(glLightfv);
+    GLIN_MAP(glLightModelf);
+    GLIN_MAP(glLightModelfv);
+    GLIN_MAP(glMaterialf);
+    GLIN_MAP(glMaterialfv);
+    GLIN_MAP(glFogf);
+    GLIN_MAP(glFogfv);
+    GLIN_MAP(glFogi);
 // Shader
     GLIN_ALL(glCompileShader);
     GLIN_ALL(glCreateShader);
     GLIN_ALL(glLinkProgram);
     GLIN_ALL(glGetActiveUniformName);
+    GLIN_ALL(glUseProgram);
+    AS_GLIN_ALL(glUseProgramObject, glUseProgram);
 // Object
     GLIN_ALL(glGetInfoLog);
     GLIN_ALL(glDeleteObject);
@@ -162,21 +190,11 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glPixelStoref);
 // Incomplete
     GLIN_ALL(glGetCompressedTexImage);
-    GLIN_MAP(glBegin);
-    GLIN_MAP(glEnd);
-    GLIN_MAP(glVertex3f);
-    GLIN_MAP(glClipPlane);
-    GLIN_MAP(glClipPlanef);
 // Not implemented
-    GLIN_ALL(glTexCoord2f);
     GLIN_ALL(glPolygonMode);
     GLIN_ALL(glPopAttrib);
     GLIN_ALL(glPushAttrib);
-    GLIN_ALL(glEnableClientState);
-    GLIN_ALL(glDisableClientState);
     GLIN_ALL(glClientActiveTexture);
-    GLIN_ALL(glVertexPointer);
-    GLIN_ALL(glTexCoordPointer);
     GLIN_ALL(glProgramEnvParameters4fv);
     GLIN_ALL(glEnableIndexed);
     GLIN_ALL(glDisableIndexed);

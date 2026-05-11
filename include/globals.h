@@ -2,6 +2,7 @@
 #define _GLIN_GLOBALS_H
 
 #include "GLES.h"
+#include <vector>
 
 #ifdef USE_MAP_FOR_SHADERS_DESC
     #include <unordered_map>
@@ -31,6 +32,10 @@ struct matrix4_t
 {
     float m[16];
     
+    inline GLfloat* data()
+    {
+        return (GLfloat*)&m[0];
+    }
     static inline matrix4_t Identity()
     {
         return matrix4_t
@@ -49,6 +54,16 @@ struct matrix_stack_t
     unsigned char pos = 0;
     matrix4_t matrices[MAX_COUNT_OF_MATRIX_STACK];
     
+    matrix_stack_t() { Reset(); }
+    
+    inline void Reset()
+    {
+        pos = 0;
+        for(int i = 0; i < MAX_COUNT_OF_MATRIX_STACK; ++i)
+        {
+            matrices[i] = matrix4_t::Identity();
+        }
+    }
     inline matrix4_t& Push()
     {
         if(pos < MAX_COUNT_OF_MATRIX_STACK-1) ++pos;
@@ -90,6 +105,25 @@ struct matrices_type_stack_t
     }
 };
 
+// globals.client
+struct client_state_t
+{
+    bool vertexArrayEnabled = false;
+    bool colorArrayEnabled = false;
+    bool texCoordArrayEnabled = false;
+    bool normalArrayEnabled = false;
+
+    const void* vertexPtr = NULL;
+    const void* colorPtr = NULL;
+    const void* texCoordPtr = NULL;
+    const void* normalPtr = NULL;
+
+    GLint vertexSize = 4; GLenum vertexType = GL_FLOAT; GLsizei vertexStride = 0;
+    GLint colorSize = 4; GLenum colorType = GL_FLOAT; GLsizei colorStride = 0;
+    GLint texCoordSize = 4; GLenum texCoordType = GL_FLOAT; GLsizei texCoordStride = 0;
+    GLenum normalType = GL_FLOAT; GLsizei normalStride = 0;
+};
+
 // globals.ff
 struct fixed_func_state_t
 {
@@ -99,9 +133,15 @@ struct fixed_func_state_t
     bool logicOpEnabled = false;
     GLenum logicOpMode = GL_COPY;
 
+    bool lightEnabled[8] = { false };
     float lightPos[8][4] = { {0,0,1,0} };
     float lightAmbient[8][4] = { {0,0,0,1} };
+    float lightSpecular[8][4] = { {0,0,0,1} };
     float lightDiffuse[8][4] = { {0,0,0,1} };
+    float lightSpotDir[8][4] = { {0,0,0,1} };
+    float lightSpotExponent[8] = { 0 };
+    float lightSpotCutoff[8] = { 0 };
+    float lightAttenuation[8][3] = { {0,0,0} };
     
     float matAmbient[4] = {0.2f, 0.2f, 0.2f, 1.0f};
     float matDiffuse[4] = {0.8f, 0.8f, 0.8f, 1.0f};
@@ -118,6 +158,7 @@ struct fixed_func_state_t
     float clipPlanes[6][4] = { { 0.0f } } ;
     bool clipPlaneOn[6] = { false };
 
+    GLenum shadeModel = GL_SMOOTH;
     GLint texEnvMode = GL_MODULATE; // GL_MODULATE, GL_DECAL, GL_BLEND, GL_REPLACE
 };
 
@@ -126,8 +167,17 @@ struct render_list_t
 {
     bool begin = false;
     vector4_t color = {1.0f, 1.0f, 1.0f, 1.0f};
+    vector2_t texcoord = {0.0f, 0.0f};
+    vector3_t normal = {0.0f, 0.0f, 1.0f};
     GLfloat mvp_matrix[16] = { 0.0f };
-    GLfloat mv_matrix_inv[16] = { 0.0f };
+    
+    std::vector<vector3_t> vertices;
+    std::vector<vector4_t> colors;
+    std::vector<vector2_t> texcoords;
+    std::vector<vector3_t> normals;
+    
+    GLuint fixedVAO = 0;
+    GLuint fixedVBO[4] = { 0 };
 };
 
 // globals.shaders[*]
@@ -155,6 +205,16 @@ struct query_desc_t
     GLuint start;
 };
 
+// globals.programs[*]
+struct program_t
+{
+    GLuint id = 0;
+    GLuint vertexShader = 0;
+    GLuint fragmentShader = 0;
+    GLuint geometryShader = 0;
+    GLuint attributes[4] = { 0xFFFFFFFF };
+};
+
 // globals.programsARB[*]
 struct program_arb_t
 {
@@ -173,8 +233,8 @@ struct glstate_t
     char lastPolygonMode = 0; // GL_FILL
     texture_desc_t* activeTexture = nullptr;
     GLuint activeQuery = 0;
-    GLuint activeDrawBuffer = 0;
-    GLuint activeReadBuffer = 0;
+    GLuint activeDrawBuffer = GL_COLOR_ATTACHMENT0;
+    GLuint activeReadBuffer = GL_COLOR_ATTACHMENT0;
     GLuint fakeVBO = 0;
     GLenum activeTexUnit = GL_TEXTURE0;
     unsigned long long queriesTimeOffset = GetClock();
@@ -198,6 +258,7 @@ struct extensions_t
     bool hasAlphaFuncQCOM;
     bool hasTextureLods;
     bool hasDXT;
+    bool hasClipCull; // GL_EXT_clip_cull_distance
 };
 
 // globals
@@ -214,6 +275,7 @@ struct glin_globals_t
     arbstate_t arb;
     matrices_type_stack_t matrix;
     fixed_func_state_t ff;
+    client_state_t client;
 
     GLenum lastPrimitiveMode;
     #ifdef USE_MAP_FOR_SHADERS_DESC
