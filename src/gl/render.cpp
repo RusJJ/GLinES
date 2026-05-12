@@ -388,10 +388,30 @@ void WRAP(glClientActiveTexture(GLenum texture))
 
 void WRAP(glTexEnvi(GLenum target, GLenum pname, GLint param))
 {
-    
+    texcoord_state_t& state = globals->client.texCoord[globals->ff.activeTextureUnit];
+    if(target == GL_TEXTURE_ENV)
+    {
+        if(pname == GL_TEXTURE_ENV_MODE)
+        {
+            if(param == GL_REPLACE) state.texCoordBlendLogic = 0;
+            else if(param == GL_ADD) state.texCoordBlendLogic = 2;
+            else if(param == GL_BLEND) state.texCoordBlendLogic = 3;
+            else if(param == GL_DECAL) state.texCoordBlendLogic = 4;
+            else state.texCoordBlendLogic = 1; // GL_MODULATE
+        }
+    }
 }
 
 void WRAP(glTexEnvf(GLenum target, GLenum pname, GLfloat param))
 {
     WRAP(glTexEnvi(target, pname, param));
+}
+
+void WRAP(glTexEnvfv(GLenum target, GLenum pname, const GLfloat *p))
+{
+    texcoord_state_t& state = globals->client.texCoord[globals->ff.activeTextureUnit];
+    if(target == GL_TEXTURE_ENV && pname == GL_TEXTURE_ENV_COLOR)
+    {
+        state.texCoordColor = { p[0], p[1], p[2], p[3] };
+    }
 }

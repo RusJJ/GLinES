@@ -170,6 +170,8 @@ struct texcoord_state_t
     GLsizei texCoordStride = 0;
     GLuint texCoordBuffer = 0;
     const void* texCoordPtr = NULL;
+    vector4_t texCoordColor = {0,0,0,0};
+    unsigned char texCoordBlendLogic = 1;
 };
 struct client_state_t
 {

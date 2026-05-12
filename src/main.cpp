@@ -146,6 +146,7 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glClientActiveTexture);
     GLIN_MAP(glTexEnvi);
     GLIN_MAP(glTexEnvf);
+    GLIN_MAP(glTexEnvfv);
 // Shader
     GLIN_ALL(glCompileShader);
     GLIN_ALL(glCreateShader);

@@ -26,13 +26,19 @@ enum eShaderFlags
     SF_FOG_LINEAR = (1 << 9),
     SF_FOG_EXP = (1 << 10),
     SF_FOG_EXP2 = (1 << 11),
-    
-    SF_ORTHO = (1 << 31)
+    SF_TEXUNIT1 = (1 << 12),
+    SF_TEXUNIT2 = (1 << 13),
+    SF_TEXUNIT3 = (1 << 14),
+    SF_TEXUNIT4 = (1 << 15),
+    SF_TEXUNIT5 = (1 << 16),
+    SF_TEXUNIT6 = (1 << 17),
+    SF_TEXUNIT7 = (1 << 18),
+    SF_LIGHTING = (1 << 19)
 };
 
 struct fixed_uniform_t
 {
-    fixed_uniform_t() { vec4 = {0,0,0,0}; }
+    fixed_uniform_t() { mat4 = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; }
     GLint id = -1;
     union
     {
@@ -50,17 +56,32 @@ struct fixed_uniform_t
         glUniform1f(id, v);
         f = v;
     }
+    inline void Apply(const float* v, int num)
+    {
+        if(id == -1) return;
+        glUniform1fv(id, num, v);
+    }
     inline void Apply(int v)
     {
         if(id == -1 || i == v) return;
         glUniform1i(id, v);
         i = v;
     }
+    inline void Apply(const int* v, int num)
+    {
+        if(id == -1) return;
+        glUniform1iv(id, num, v);
+    }
     inline void Apply(const vector2_t& v)
     {
         if(id == -1 || vec2 == v) return;
         glUniform2f(id, v.x, v.y);
         vec2 = v;
+    }
+    inline void Apply(const vector2_t* v, int num)
+    {
+        if(id == -1) return;
+        glUniform2fv(id, num, (GLfloat*)v);
     }
     inline void Apply(const vector3_t& v)
     {
@@ -90,6 +111,11 @@ struct fixed_program_t
     fixed_uniform_t uDiffuse;
     fixed_uniform_t uFogColor;
     fixed_uniform_t uFogValues;
+    fixed_uniform_t uAmbientColor;
+    fixed_uniform_t uTexCoords;
+    fixed_uniform_t uTexColors;
+    fixed_uniform_t uTexModes;
+    fixed_uniform_t uTexIDs;
 };
 
 unsigned int g_nFixedPipelineShaderFlags = 0;
@@ -105,19 +131,24 @@ inline void BuildShaderFlag()
 {
     g_nFixedPipelineShaderFlags = 0;
     
-    if(globals->render.texture) EFL(SF_TEXTURED);
+    if(globals->render.texture || globals->client.texCoord[0].enabled) EFL(SF_TEXTURED);
+    if(globals->ff.lightingEnabled)
+    {
+        EFL(SF_LIGHTING);
+    }
     if(globals->ff.fogEnabled)
     {
         if(globals->ff.fogMode == GL_EXP2) EFL(SF_FOG_EXP2);
         else if(globals->ff.fogMode == GL_LINEAR) EFL(SF_FOG_LINEAR);
         else EFL(SF_FOG_EXP);
     }
-    
-    if(globals->matrix.projection.Current().m[11] == 1.0f)
-    {
-        // TODO: Is it ortho???
-        EFL(SF_ORTHO);
-    }
+    if(globals->client.texCoord[1].enabled) EFL(SF_TEXUNIT1);
+    if(globals->client.texCoord[2].enabled) EFL(SF_TEXUNIT2);
+    if(globals->client.texCoord[3].enabled) EFL(SF_TEXUNIT3);
+    if(globals->client.texCoord[4].enabled) EFL(SF_TEXUNIT4);
+    if(globals->client.texCoord[5].enabled) EFL(SF_TEXUNIT5);
+    if(globals->client.texCoord[6].enabled) EFL(SF_TEXUNIT6);
+    if(globals->client.texCoord[7].enabled) EFL(SF_TEXUNIT7);
 }
 
 std::string BuildVertexShader()
@@ -133,11 +164,37 @@ std::string BuildVertexShader()
     s += "out lowp vec4 v_color;\n";
     s += "out vec2 v_texCoord;\n";
     s += "out vec4 v_position;\n";
+    if(FL(SF_TEXUNIT1) || FL(SF_TEXUNIT2) || FL(SF_TEXUNIT3) || FL(SF_TEXUNIT4) ||
+        FL(SF_TEXUNIT5) || FL(SF_TEXUNIT6) || FL(SF_TEXUNIT7))
+    {
+        s += "layout(location = 9) vec2 a_texCoords[7];\n";
+        s += "out vec2 v_texCoords[7];\n";
+    }
+    if(FL(SF_LIGHTING))
+    {
+        s += "uniform vec4 u_ambientColor;\n";
+    }
     
     // Body
     s += "void main() {\n";
     s += "  v_position = u_proj * u_modelview * vec4(a_position, 1.0);\n";
-    s += "  v_color = a_color;\n";
+    if(FL(SF_LIGHTING))
+    {
+        s += "  lowp vec4 finalLight = u_ambientColor;\n";
+        // TODO: lights
+        s += "  v_color = finalLight * a_color;\n";
+    }
+    else
+    {
+        s += "  v_color = a_color;\n";
+    }
+    if(FL(SF_TEXUNIT1)) s += "  v_texCoords[0] = a_texCoords[0];\n";
+    if(FL(SF_TEXUNIT2)) s += "  v_texCoords[1] = a_texCoords[1];\n";
+    if(FL(SF_TEXUNIT3)) s += "  v_texCoords[2] = a_texCoords[2];\n";
+    if(FL(SF_TEXUNIT4)) s += "  v_texCoords[3] = a_texCoords[3];\n";
+    if(FL(SF_TEXUNIT5)) s += "  v_texCoords[4] = a_texCoords[4];\n";
+    if(FL(SF_TEXUNIT6)) s += "  v_texCoords[5] = a_texCoords[5];\n";
+    if(FL(SF_TEXUNIT7)) s += "  v_texCoords[6] = a_texCoords[6];\n";
     s += "  v_texCoord = a_texCoord;\n";
     s += "  gl_Position = v_position;\n";
     s += "}";
@@ -175,6 +232,23 @@ std::string BuildFragmentShader()
         s += "  return clamp(factor, 0.0, 1.0);\n";
         s += "}\n";
     }
+    if(FL(SF_TEXUNIT1) || FL(SF_TEXUNIT2) || FL(SF_TEXUNIT3) || FL(SF_TEXUNIT4) ||
+        FL(SF_TEXUNIT5) || FL(SF_TEXUNIT6) || FL(SF_TEXUNIT7))
+    {
+        s += "in vec2 v_texCoords[7];\n";
+        s += "uniform vec4 u_texColor[7];\n";
+        s += "uniform int u_texMode[7];\n";
+        s += "uniform sampler2D u_texId[7];\n";
+        s += "void mixUnitColor(int unit) {\n";
+        s += "  int mode = u_texMode[unit];\n";
+        s += "  lowp vec4 texColor = texture(u_texId[unit], v_texCoords[unit]);\n";
+        s += "  if(mode == 0) { finalColor = texColor; return; }\n"; // GL_REPLACE
+        s += "  if(mode == 1) { finalColor *= texColor; return; }\n"; // GL_MODULATE (default)
+        s += "  if(mode == 2) { finalColor = vec4(finalColor.rgb + texColor.rgb, finalColor.a * texColor.a); return; }\n"; // GL_ADD
+        s += "  if(mode == 3) { finalColor = vec4(mix(finalColor.rgb, u_texColor[unit].rgb, texColor.rgb), finalColor.a * texColor.a); return; }\n"; // GL_BLEND
+        s += "  if(mode == 4) { finalColor = vec4(mix(finalColor.rgb, texColor.rgb, texColor.a), finalColor.a); return; }\n"; // GL_DECAL
+        s += "}\n"; // TODO: GL_COMBINE..?
+    }
     
     // Body
     s += "void main() {\n";
@@ -186,6 +260,13 @@ std::string BuildFragmentShader()
     {
         s+= "  finalColor = v_color;\n";
     }
+    if(FL(SF_TEXUNIT1)) s += "  mixUnitColor(0);\n"; // TODO: also TEXUNIT0...
+    if(FL(SF_TEXUNIT2)) s += "  mixUnitColor(1);\n";
+    if(FL(SF_TEXUNIT3)) s += "  mixUnitColor(2);\n";
+    if(FL(SF_TEXUNIT4)) s += "  mixUnitColor(3);\n";
+    if(FL(SF_TEXUNIT5)) s += "  mixUnitColor(4);\n";
+    if(FL(SF_TEXUNIT6)) s += "  mixUnitColor(5);\n";
+    if(FL(SF_TEXUNIT7)) s += "  mixUnitColor(6);\n";
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
     {
         s+= "  finalColor.rgb = mix(u_fogColor.rgb, finalColor.rgb, getFogValue());\n";
@@ -223,7 +304,7 @@ unsigned int BuildFixedProgram()
 
 void UseFixedProgram()
 {
-    // If we have our own shader.
+    // If we have our own shader. // TODO: pass uniforms!
     if(globals->gl.activeProgram != 0) return;
     
     BuildShaderFlag();
@@ -249,6 +330,11 @@ void UseFixedProgram()
         program->uDiffuse.id = glGetUniformLocation(g_nUberShader, "u_texture");
         program->uFogColor.id = glGetUniformLocation(g_nUberShader, "u_fogColor");
         program->uFogValues.id = glGetUniformLocation(g_nUberShader, "u_fogValues");
+        program->uAmbientColor.id = glGetUniformLocation(g_nUberShader, "u_ambientColor");
+        program->uTexCoords.id = glGetUniformLocation(g_nUberShader, "u_texCoords");
+        program->uTexColors.id = glGetUniformLocation(g_nUberShader, "u_texColor");
+        program->uTexModes.id = glGetUniformLocation(g_nUberShader, "u_texMode");
+        program->uTexIDs.id = glGetUniformLocation(g_nUberShader, "u_texId");
     }
     
     glUseProgram(g_nUberShader);
@@ -258,6 +344,8 @@ void UseFixedProgram()
     activeFixedProgram->uDiffuse.Apply(0);
     activeFixedProgram->uFogColor.Apply(globals->ff.fogColor);
     activeFixedProgram->uFogValues.Apply(vector3_t{globals->ff.fogStart, globals->ff.fogEnd, globals->ff.fogDensity});
+    activeFixedProgram->uAmbientColor.Apply(globals->render.ambient);
+    // TODO: texture units ;(
 }
 
 void TransformFixedVerts()

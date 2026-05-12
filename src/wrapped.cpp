@@ -418,7 +418,7 @@ void WRAP(glDrawArrays(GLenum mode, GLint first, GLsizei count))
 
     for(int i = 0; i < 8; ++i)
     {
-        texcoord_state_t& state = globals->client.texCoord[globals->ff.activeTextureUnit];
+        texcoord_state_t& state = globals->client.texCoord[i];
         if(state.enabled) 
         {
             if(state.texCoordBuffer == 0)

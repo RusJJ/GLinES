@@ -42,3 +42,4 @@ void WRAP(glLogicOp(GLenum opcode));
 void WRAP(glClientActiveTexture(GLenum texture));
 void WRAP(glTexEnvi(GLenum target, GLenum pname, GLint param));
 void WRAP(glTexEnvf(GLenum target, GLenum pname, GLfloat param));
+void WRAP(glTexEnvfv(GLenum target, GLenum pname, const GLfloat *params));
