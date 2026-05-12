@@ -1,14 +1,12 @@
 void WRAP(glGetCompressedTexImage(GLenum target, GLint lod, GLvoid *img));
 void WRAP(glPopAttrib());
 void WRAP(glPushAttrib(GLbitfield mask));
-void WRAP(glClientActiveTexture(GLenum texture));
 void WRAP(glProgramEnvParameters4fv(GLenum target, GLuint index, GLsizei count, const GLfloat *params));
 void WRAP(glEnableIndexed(GLenum target, GLuint index));
 void WRAP(glDisableIndexed(GLenum target, GLuint index));
 void WRAP(glGetBooleanIndexedv(GLenum target, GLuint index, GLboolean *data));
 void WRAP(glPopClientAttrib());
 void WRAP(glPushClientAttrib(GLbitfield mask));
-void WRAP(glLogicOp(GLenum opcode));
 
 void WRAP(glGetProgramiv( GLuint program,GLenum pname,GLint *params));
 void WRAP(glGetIntegerv( GLenum pname, GLint * data));
@@ -27,3 +25,4 @@ void WRAP(glPixelStoref(GLenum pname, GLfloat param));
 void WRAP(glDrawArrays(GLenum mode, GLint first, GLsizei count));
 void WRAP(glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices));
 void WRAP(glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const GLvoid *indices));
+void WRAP(glDrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type, const void *indices, GLint basevertex));

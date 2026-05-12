@@ -38,3 +38,7 @@ void WRAP(glMaterialfv(GLenum face, GLenum pname, const GLfloat *params));
 void WRAP(glFogf(GLenum pname, GLfloat param));
 void WRAP(glFogfv(GLenum pname, const GLfloat *params));
 void WRAP(glFogi(GLenum pname, GLint param));
+void WRAP(glLogicOp(GLenum opcode));
+void WRAP(glClientActiveTexture(GLenum texture));
+void WRAP(glTexEnvi(GLenum target, GLenum pname, GLint param));
+void WRAP(glTexEnvf(GLenum target, GLenum pname, GLfloat param));

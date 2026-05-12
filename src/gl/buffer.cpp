@@ -80,3 +80,25 @@ GLenum WRAP(glCheckFramebufferStatus(GLenum target))
     }
     return ret;
 }
+
+void WRAP(glBindBuffer(GLenum target, GLuint buffer))
+{
+    if (target == GL_ARRAY_BUFFER) globals->client.boundArrayBuffer = buffer;
+    else if (target == GL_ELEMENT_ARRAY_BUFFER) globals->client.boundElementBuffer = buffer;
+    else if (target == GL_PIXEL_UNPACK_BUFFER) globals->client.boundPixelUnpackBuffer = buffer;
+    else if (target == GL_PIXEL_PACK_BUFFER) globals->client.boundPixelPackBuffer = buffer;
+    else if (target == GL_UNIFORM_BUFFER) globals->client.boundUniformBuffer = buffer;
+
+    glBindBuffer(target, buffer);
+}
+
+
+void WRAP(glBindBufferRange(GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size))
+{
+    
+}
+
+void WRAP(glBindBufferBase(GLenum target, GLuint index, GLuint buffer))
+{
+    
+}

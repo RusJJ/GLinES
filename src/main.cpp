@@ -142,6 +142,10 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glFogf);
     GLIN_MAP(glFogfv);
     GLIN_MAP(glFogi);
+    GLIN_MAP(glLogicOp);
+    GLIN_MAP(glClientActiveTexture);
+    GLIN_MAP(glTexEnvi);
+    GLIN_MAP(glTexEnvf);
 // Shader
     GLIN_ALL(glCompileShader);
     GLIN_ALL(glCreateShader);
@@ -175,6 +179,9 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glGetBufferSubData);
     GLIN_ALL(glBindFramebuffer);
     GLIN_ALL(glCheckFramebufferStatus);
+    GLIN_ALL(glBindBuffer);
+    GLIN_ALL(glBindBufferRange);
+    GLIN_ALL(glBindBufferBase);
 // Matrix
     GLIN_MAP(glMatrixMode);
     GLIN_MAP(glLoadIdentity);
@@ -211,14 +218,12 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glPolygonMode);
     GLIN_ALL(glPopAttrib);
     GLIN_ALL(glPushAttrib);
-    GLIN_ALL(glClientActiveTexture);
     GLIN_ALL(glProgramEnvParameters4fv);
     GLIN_ALL(glEnableIndexed);
     GLIN_ALL(glDisableIndexed);
     GLIN_ALL(glGetBooleanIndexedv);
     GLIN_ALL(glPushClientAttrib);
     GLIN_ALL(glPopClientAttrib);
-    GLIN_ALL(glLogicOp);
 // Wraps (debug purpose)
     //GLIN_ALL(glClearColor);
 // Default ES 3.x functions

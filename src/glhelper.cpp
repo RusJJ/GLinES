@@ -125,9 +125,9 @@ std::string BuildVertexShader()
     // Header
     std::string s = "#version 320 es\nprecision highp float;\n";
     s += "layout(location = 0) in vec3 a_position;\n";
-    s += "layout(location = 1) in vec4 a_color;\n";
-    s += "layout(location = 2) in vec2 a_texCoord;\n";
-    s += "layout(location = 3) in vec3 a_normal;\n";
+    s += "layout(location = 2) in vec3 a_normal;\n";
+    s += "layout(location = 3) in vec4 a_color;\n";
+    s += "layout(location = 8) in vec2 a_texCoord;\n";
     s += "uniform mat4 u_modelview;";
     s += "uniform mat4 u_proj;\n";
     s += "out lowp vec4 v_color;\n";
@@ -223,6 +223,9 @@ unsigned int BuildFixedProgram()
 
 void UseFixedProgram()
 {
+    // If we have our own shader.
+    if(globals->gl.activeProgram != 0) return;
+    
     BuildShaderFlag();
     
     auto it = g_mapFixedPrograms.find(g_nFixedPipelineShaderFlags);
@@ -326,7 +329,7 @@ void TransformFixedVerts()
     if(globals->render.fixedVAO == 0)
     {
         glGenVertexArrays(1, &globals->render.fixedVAO);
-        glGenBuffers(4, globals->render.fixedVBO);
+        glGenBuffers(11, globals->render.fixedVBO);
     }
     glBindVertexArray(globals->render.fixedVAO);
 
@@ -339,36 +342,36 @@ void TransformFixedVerts()
     {
         glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
         glBufferData(GL_ARRAY_BUFFER, finalColors.size() * sizeof(vector4_t), finalColors.data(), GL_STREAM_DRAW);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, NULL);
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 0, NULL);
     }
     else
     {
-        glDisableVertexAttribArray(1);
+        glDisableVertexAttribArray(3);
     }
 
-    if(!finalTexCoords.empty())
+    if(!finalNormals.empty())
     {
         glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
-        glBufferData(GL_ARRAY_BUFFER, finalTexCoords.size() * sizeof(vector2_t), finalTexCoords.data(), GL_STREAM_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, finalNormals.size() * sizeof(vector3_t), finalNormals.data(), GL_STREAM_DRAW);
         glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, NULL);
     }
     else
     {
         glDisableVertexAttribArray(2);
     }
 
-    if(!finalNormals.empty())
+    if(!finalTexCoords.empty())
     {
         glBindBuffer(GL_ARRAY_BUFFER, vbos[3]);
-        glBufferData(GL_ARRAY_BUFFER, finalNormals.size() * sizeof(vector3_t), finalNormals.data(), GL_STREAM_DRAW);
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+        glBufferData(GL_ARRAY_BUFFER, finalTexCoords.size() * sizeof(vector2_t), finalTexCoords.data(), GL_STREAM_DRAW);
+        glEnableVertexAttribArray(8);
+        glVertexAttribPointer(8, 2, GL_FLOAT, GL_FALSE, 0, NULL);
     }
     else
     {
-        glDisableVertexAttribArray(3);
+        glDisableVertexAttribArray(8);
     }
     
     // TODO: UBO

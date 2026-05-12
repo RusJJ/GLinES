@@ -1,4 +1,5 @@
 #include "GLES.h"
+#include "glhelper.h"
 
 void WRAP(glGetCompressedTexImage(GLenum target, GLint lod, GLvoid *img))
 {
@@ -11,10 +12,6 @@ void WRAP(glPopAttrib())
 void WRAP(glPushAttrib(GLbitfield mask))
 {
     DBG("glPushAttrib");
-}
-void WRAP(glClientActiveTexture(GLenum texture))
-{
-    DBG("glClientActiveTexture");
 }
 void WRAP(glProgramEnvParameters4fv(GLenum target, GLuint index, GLsizei count, const GLfloat *params))
 {
@@ -39,10 +36,6 @@ void WRAP(glPopClientAttrib())
 void WRAP(glPushClientAttrib(GLbitfield mask))
 {
     DBG("glPushClientAttrib");
-}
-void WRAP(glLogicOp(GLenum opcode))
-{
-    globals->ff.logicOpMode = opcode;
 }
 
 void WRAP(glGetProgramiv(GLenum target,GLenum pname,GLint *params)) // ARB only
@@ -343,7 +336,116 @@ void WRAP(glPixelStoref(GLenum pname, GLfloat param))
 void WRAP(glDrawArrays(GLenum mode, GLint first, GLsizei count))
 {
     if(globals->gl.lastPolygonMode != 0) mode = GL_LINE_STRIP;
-    WRAPCALL(glDrawArrays(mode, first, count));
+    
+    if(!globals->client.vertexArrayEnabled)
+    {
+        glDrawArrays(mode, first, count);
+        return;
+    }
+    
+    UseFixedProgram();
+    
+    GLuint* vbos = &globals->render.fixedVBO[0];
+    if(globals->render.fixedVAO == 0)
+    {
+        glGenVertexArrays(1, &globals->render.fixedVAO);
+        glGenBuffers(11, globals->render.fixedVBO);
+    }
+    glBindVertexArray(globals->render.fixedVAO);
+
+    if(globals->client.vertexBuffer == 0) 
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
+        size_t elemBytes = globals->client.vertexStride == 0 ? (globals->client.vertexSize * GetGLTypeSize(globals->client.vertexType)) : globals->client.vertexStride;
+        
+        glBufferData(GL_ARRAY_BUFFER, (first + count) * elemBytes, globals->client.vertexPtr, GL_STREAM_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, globals->client.vertexSize, globals->client.vertexType, GL_FALSE, globals->client.vertexStride, (void*)0);
+    } 
+    else 
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, globals->client.vertexBuffer);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, globals->client.vertexSize, globals->client.vertexType, GL_FALSE, globals->client.vertexStride, globals->client.vertexPtr);
+    }
+
+    if(globals->client.colorArrayEnabled) 
+    {
+        if (globals->client.colorBuffer == 0)
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
+            size_t elemBytes = globals->client.colorStride == 0 ? (globals->client.colorSize * GetGLTypeSize(globals->client.colorType)) : globals->client.colorStride;
+            
+            glBufferData(GL_ARRAY_BUFFER, (first + count) * elemBytes, globals->client.colorPtr, GL_STREAM_DRAW);
+            glEnableVertexAttribArray(3);
+            glVertexAttribPointer(3, globals->client.colorSize, globals->client.colorType, GL_FALSE, globals->client.colorStride, (void*)0);
+        }
+        else
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, globals->client.colorBuffer);
+            glEnableVertexAttribArray(3);
+            glVertexAttribPointer(3, globals->client.colorSize, globals->client.colorType, GL_FALSE, globals->client.colorStride, globals->client.colorPtr);
+        }
+    } 
+    else 
+    {
+        glDisableVertexAttribArray(3);
+        glVertexAttrib4fv(3, &globals->render.color.x); 
+    }
+    
+    if (globals->client.normalArrayEnabled) 
+    {
+        if(globals->client.normalBuffer == 0)
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
+            size_t elemBytes = globals->client.normalStride == 0 ? (3 * GetGLTypeSize(globals->client.normalType)) : globals->client.normalStride;
+            
+            glBufferData(GL_ARRAY_BUFFER, (first + count) * elemBytes, globals->client.normalPtr, GL_STREAM_DRAW);
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(2, 3, globals->client.normalType, GL_FALSE, globals->client.normalStride, (void*)0);
+        }
+        else
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, globals->client.normalBuffer);
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(2, 3, globals->client.normalType, GL_FALSE, globals->client.normalStride, globals->client.normalPtr);
+        }
+    } 
+    else 
+    {
+        glDisableVertexAttribArray(2);
+    }
+
+    for(int i = 0; i < 8; ++i)
+    {
+        texcoord_state_t& state = globals->client.texCoord[globals->ff.activeTextureUnit];
+        if(state.enabled) 
+        {
+            if(state.texCoordBuffer == 0)
+            {
+                glBindBuffer(GL_ARRAY_BUFFER, vbos[3 + i]);
+                size_t elemBytes = state.texCoordStride == 0 ? (state.texCoordSize * GetGLTypeSize(state.texCoordType)) : state.texCoordStride;
+            
+                glBufferData(GL_ARRAY_BUFFER, (first + count) * elemBytes, state.texCoordPtr, GL_STREAM_DRAW);
+                glEnableVertexAttribArray(8 + i);
+                glVertexAttribPointer(8 + i, state.texCoordSize, state.texCoordType, GL_FALSE, state.texCoordStride, NULL);
+            }
+            else
+            {
+                glBindBuffer(GL_ARRAY_BUFFER, state.texCoordBuffer);
+                glEnableVertexAttribArray(8 + i);
+                glVertexAttribPointer(8 + i, state.texCoordSize, state.texCoordType, GL_FALSE, state.texCoordStride, state.texCoordPtr);
+            }
+        } 
+        else 
+        {
+            glDisableVertexAttribArray(8 + i);
+        }
+    }
+
+    glDrawArrays(mode, first, count);
+    glBindVertexArray(0);
+    glUseProgram(globals->gl.activeProgram); 
 }
 
 void WRAP(glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices))
@@ -356,4 +458,9 @@ void WRAP(glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei cou
 {
     if(globals->gl.lastPolygonMode != 0) mode = GL_LINE_STRIP;
     WRAPCALL(glDrawRangeElements(mode, start, end, count, type, indices));
+}
+
+void WRAP(glDrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type, const void *indices, GLint basevertex))
+{
+    glDrawElementsBaseVertex(mode, count, type, indices, basevertex);
 }

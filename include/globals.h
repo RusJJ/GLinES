@@ -162,22 +162,35 @@ struct matrices_type_stack_t
 };
 
 // globals.client
+struct texcoord_state_t
+{
+    bool enabled = false;
+    GLint texCoordSize = 4;
+    GLenum texCoordType = GL_FLOAT;
+    GLsizei texCoordStride = 0;
+    GLuint texCoordBuffer = 0;
+    const void* texCoordPtr = NULL;
+};
 struct client_state_t
 {
+    GLuint boundArrayBuffer = 0; 
+    GLuint boundElementBuffer = 0;
+    GLuint boundPixelUnpackBuffer = 0;
+    GLuint boundPixelPackBuffer = 0;
+    GLuint boundUniformBuffer = 0;
+    
     bool vertexArrayEnabled = false;
     bool colorArrayEnabled = false;
-    bool texCoordArrayEnabled = false;
     bool normalArrayEnabled = false;
 
     const void* vertexPtr = NULL;
     const void* colorPtr = NULL;
-    const void* texCoordPtr = NULL;
     const void* normalPtr = NULL;
 
-    GLint vertexSize = 4; GLenum vertexType = GL_FLOAT; GLsizei vertexStride = 0;
-    GLint colorSize = 4; GLenum colorType = GL_FLOAT; GLsizei colorStride = 0;
-    GLint texCoordSize = 4; GLenum texCoordType = GL_FLOAT; GLsizei texCoordStride = 0;
-    GLenum normalType = GL_FLOAT; GLsizei normalStride = 0;
+    GLint vertexSize = 4; GLenum vertexType = GL_FLOAT; GLsizei vertexStride = 0; GLuint vertexBuffer = 0;
+    GLint colorSize = 4; GLenum colorType = GL_FLOAT; GLsizei colorStride = 0; GLuint colorBuffer = 0;
+    GLenum normalType = GL_FLOAT; GLsizei normalStride = 0; GLuint normalBuffer = 0;
+    texcoord_state_t texCoord[8];
 };
 
 // globals.ff
@@ -220,6 +233,7 @@ struct fixed_func_state_t
 
     GLenum shadeModel = GL_SMOOTH;
     GLint texEnvMode = GL_MODULATE; // GL_MODULATE, GL_DECAL, GL_BLEND, GL_REPLACE
+    GLint activeTextureUnit = 0;
 };
 
 // globals.render
@@ -238,7 +252,7 @@ struct render_list_t
     std::vector<vector3_t> normals;
     
     GLuint fixedVAO = 0;
-    GLuint fixedVBO[4] = { 0 };
+    GLuint fixedVBO[11] = { 0 };
     
     vector4_t ambient = {0.2f, 0.2f, 0.2f, 1.0f};
 };
@@ -298,7 +312,6 @@ struct glstate_t
     GLuint activeQuery = 0;
     GLuint activeDrawBuffer = GL_COLOR_ATTACHMENT0;
     GLuint activeReadBuffer = GL_COLOR_ATTACHMENT0;
-    GLuint fakeVBO = 0;
     GLenum activeTexUnit = GL_TEXTURE0;
     GLuint activeProgram = 0;
     unsigned long long queriesTimeOffset = GetClock();

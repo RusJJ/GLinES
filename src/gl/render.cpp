@@ -1,6 +1,7 @@
 #include "GLES.h"
 #include "gl_render.h"
 #include "gl_shader.h"
+#include "wrapped.h"
 #include "globals.h"
 #include "glhelper.h"
 
@@ -23,7 +24,8 @@ void WRAP(glEnd())
     UseFixedProgram();
     globals->render.begin = false;
     
-    TransformFixedVerts();
+    TransformFixedVerts(); // also draws.
+    glUseProgram(globals->gl.activeProgram); // restore program
     
     globals->render.vertices.clear();
     globals->render.colors.clear();
@@ -158,7 +160,7 @@ void WRAP(glMultiDrawArrays(GLenum mode, const GLint* first, const GLsizei* coun
 {
     for(GLsizei i = 0; i < drawcount; ++i)
     {
-        glDrawArrays(mode, first[i], count[i]);
+        WRAP(glDrawArrays(mode, first[i], count[i]));
     }
 }
 
@@ -166,7 +168,7 @@ void WRAP(glMultiDrawElements(GLenum mode, const GLsizei* count, GLenum type, co
 {
     for(GLsizei i = 0; i < drawcount; ++i)
     {
-        glDrawElements(mode, count[i], type, indices[i]);
+        WRAP(glDrawElements(mode, count[i], type, indices[i]));
     }
 }
 
@@ -174,7 +176,7 @@ void WRAP(glMultiDrawElementsBaseVertex(GLenum mode, const GLsizei* count, GLenu
 {
     for(GLsizei i = 0; i < drawcount; ++i)
     {
-        glDrawElementsBaseVertex(mode, count[i], type, indices[i], basevertex[i]);
+        WRAP(glDrawElementsBaseVertex(mode, count[i], type, indices[i], basevertex[i]));
     }
 }
 
@@ -197,7 +199,7 @@ void WRAP(glEnableClientState(GLenum array))
 {
     if(array == GL_VERTEX_ARRAY) globals->client.vertexArrayEnabled = true;
     else if(array == GL_COLOR_ARRAY) globals->client.colorArrayEnabled = true;
-    else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoordArrayEnabled = true;
+    else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoord[globals->ff.activeTextureUnit].enabled = true;
     else if(array == GL_NORMAL_ARRAY) globals->client.normalArrayEnabled = true;
 }
 
@@ -205,7 +207,7 @@ void WRAP(glDisableClientState(GLenum array))
 {
     if(array == GL_VERTEX_ARRAY) globals->client.vertexArrayEnabled = false;
     else if(array == GL_COLOR_ARRAY) globals->client.colorArrayEnabled = false;
-    else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoordArrayEnabled = false;
+    else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoord[globals->ff.activeTextureUnit].enabled = false;
     else if(array == GL_NORMAL_ARRAY) globals->client.normalArrayEnabled = false;
 }
 
@@ -215,6 +217,7 @@ void WRAP(glVertexPointer(GLint size, GLenum type, GLsizei stride, const void *p
     globals->client.vertexType = type;
     globals->client.vertexStride = stride;
     globals->client.vertexPtr = ptr;
+    globals->client.vertexBuffer = globals->client.boundArrayBuffer;
 }
 
 void WRAP(glColorPointer(GLint size, GLenum type, GLsizei stride, const void *ptr))
@@ -223,14 +226,17 @@ void WRAP(glColorPointer(GLint size, GLenum type, GLsizei stride, const void *pt
     globals->client.colorType = type;
     globals->client.colorStride = stride;
     globals->client.colorPtr = ptr;
+    globals->client.colorBuffer = globals->client.boundArrayBuffer;
 }
 
 void WRAP(glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const void *ptr))
 {
-    globals->client.texCoordSize = size;
-    globals->client.texCoordType = type;
-    globals->client.texCoordStride = stride;
-    globals->client.texCoordPtr = ptr;
+    texcoord_state_t& state = globals->client.texCoord[globals->ff.activeTextureUnit];
+    state.texCoordSize = size;
+    state.texCoordType = type;
+    state.texCoordStride = stride;
+    state.texCoordPtr = ptr;
+    state.texCoordBuffer = globals->client.boundArrayBuffer;
 }
 
 void WRAP(glNormalPointer(GLenum type, GLsizei stride, const void *ptr))
@@ -238,6 +244,7 @@ void WRAP(glNormalPointer(GLenum type, GLsizei stride, const void *ptr))
     globals->client.normalType = type;
     globals->client.normalStride = stride;
     globals->client.normalPtr = ptr;
+    globals->client.normalBuffer = globals->client.boundArrayBuffer;
 }
 
 void WRAP(glLightf(GLenum light, GLenum pname, GLfloat param))
@@ -367,4 +374,24 @@ void WRAP(glFogi(GLenum pname, GLint param))
     {
         globals->ff.fogMode = param;
     }
+}
+
+void WRAP(glLogicOp(GLenum opcode))
+{
+    globals->ff.logicOpMode = opcode;
+}
+
+void WRAP(glClientActiveTexture(GLenum texture))
+{
+    globals->ff.activeTextureUnit = texture - GL_TEXTURE0;
+}
+
+void WRAP(glTexEnvi(GLenum target, GLenum pname, GLint param))
+{
+    
+}
+
+void WRAP(glTexEnvf(GLenum target, GLenum pname, GLfloat param))
+{
+    WRAP(glTexEnvi(target, pname, param));
 }
