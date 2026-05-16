@@ -4,6 +4,7 @@
 #include "wrapped.h"
 #include "globals.h"
 #include "glhelper.h"
+#include "maths.h"
 
 void WRAP(glBegin(GLenum mode))
 {
@@ -208,7 +209,11 @@ void WRAP(glDisableClientState(GLenum array))
     if(array == GL_VERTEX_ARRAY) globals->client.vertexArrayEnabled = false;
     else if(array == GL_COLOR_ARRAY) globals->client.colorArrayEnabled = false;
     else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoord[globals->ff.activeTextureUnit].enabled = false;
-    else if(array == GL_NORMAL_ARRAY) globals->client.normalArrayEnabled = false;
+    else if(array == GL_NORMAL_ARRAY)
+    {
+        globals->client.normalArrayEnabled = false;
+        glVertexAttrib3f(2, 0.0f, 0.0f, 1.0f); 
+    }
 }
 
 void WRAP(glVertexPointer(GLint size, GLenum type, GLsizei stride, const void *ptr))
@@ -259,43 +264,44 @@ void WRAP(glLightfv(GLenum light, GLenum pname, const GLfloat *params))
 
     if(pname == 0x1200) // GL_AMBIENT
     {
-        memcpy(globals->ff.lightAmbient[idx], params, 4 * sizeof(float));
+        memcpy(&globals->ff.lights[idx].ambient, params, 4 * sizeof(float));
     }
     else if (pname == 0x1201) // GL_DIFFUSE
     {
-        memcpy(globals->ff.lightDiffuse[idx], params, 4 * sizeof(float));
+        memcpy(&globals->ff.lights[idx].diffuse, params, 4 * sizeof(float));
     }
     else if (pname == 0x1202) // GL_SPECULAR
     {
-        memcpy(globals->ff.lightSpecular[idx], params, 4 * sizeof(float));
+        memcpy(&globals->ff.lights[idx].spec, params, 4 * sizeof(float));
     }
     else if (pname == 0x1203) // GL_POSITION
     {
-        memcpy(globals->ff.lightPos[idx], params, 4 * sizeof(float));
+        MultiplyMatrix((float*)&globals->matrix.modelview.Current(), params, &globals->ff.lights[idx].pos.x);
+        //memcpy(&globals->ff.lights[idx].pos, params, 4 * sizeof(float));
     }
     else if (pname == 0x1204) // GL_SPOT_DIRECTION
     {
-        memcpy(globals->ff.lightSpotDir[idx], params, 4 * sizeof(float));
+        memcpy(&globals->ff.lights[idx].dir, params, 4 * sizeof(float));
     }
     else if (pname == 0x1205) // GL_SPOT_EXPONENT
     {
-        globals->ff.lightSpotExponent[idx] = params[0];
+        globals->ff.lights[idx].spotExp = params[0];
     }
     else if (pname == 0x1206) // GL_SPOT_CUTOFF
     {
-        globals->ff.lightSpotCutoff[idx] = params[0];
+        globals->ff.lights[idx].spotCutoff = params[0];
     }
     else if (pname == 0x1207) // GL_CONSTANT_ATTENUATION
     {
-        globals->ff.lightAttenuation[idx][0] = params[0];
+        globals->ff.lights[idx].attenuationConst = params[0];
     }
     else if (pname == 0x1208) // GL_LINEAR_ATTENUATION
     {
-        globals->ff.lightAttenuation[idx][1] = params[0];
+        globals->ff.lights[idx].attenuationLinear = params[0];
     }
     else if (pname == 0x1209) // GL_QUADRATIC_ATTENUATION
     {
-        globals->ff.lightAttenuation[idx][2] = params[0];
+        globals->ff.lights[idx].attenuationQuad = params[0];
     }
 }
 

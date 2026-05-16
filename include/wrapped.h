@@ -17,8 +17,6 @@ GLboolean WRAP(glIsEnabled(GLenum cap));
 void WRAP(glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter));
 void WRAP(glDrawBuffers(GLsizei n, const GLenum *bufs));
 void WRAP(glDrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, void *indices, GLint basevertex));
-void WRAP(glClearColor(GLclampf r, GLclampf g, GLclampf b, GLclampf a));
-void WRAP(glClear(GLbitfield mask));
 void WRAP(glGetFloatv(GLenum pname, GLfloat* data));
 void WRAP(glGetDoublev(GLenum pname, GLdouble* data));
 void WRAP(glPixelStoref(GLenum pname, GLfloat param));

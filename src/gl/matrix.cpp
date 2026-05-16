@@ -15,7 +15,10 @@ GLINAPI void WRAP(glLoadIdentity())
 
 GLINAPI void WRAP(glPushMatrix())
 {
+    // https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glPushMatrix.xml
+    matrix4_t& current = globals->matrix.Current();
     globals->matrix.Push();
+    globals->matrix.Current() = current;
 }
 
 GLINAPI void WRAP(glPopMatrix())

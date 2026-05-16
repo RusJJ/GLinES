@@ -280,11 +280,6 @@ GLboolean WRAP(glIsEnabled(GLenum cap))
     }
 }
 
-void WRAP(glClear(GLbitfield mask))
-{
-    glClear((mask & (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)));
-}
-
 void WRAP(glGetFloatv(GLenum pname, GLfloat* data))
 {
     switch(pname)
@@ -318,7 +313,7 @@ void WRAP(glGetDoublev(GLenum pname, GLdouble* data))
         case GL_MODELVIEW_MATRIX:
         case GL_PROJECTION_MATRIX:
         case GL_TEXTURE_MATRIX:
-            num = 4;
+            num = 16;
             break;
             
         // TODO: more
@@ -462,5 +457,5 @@ void WRAP(glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei cou
 
 void WRAP(glDrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type, const void *indices, GLint basevertex))
 {
-    glDrawElementsBaseVertex(mode, count, type, indices, basevertex);
+    WRAPCALL(glDrawElementsBaseVertex(mode, count, type, indices, basevertex));
 }

@@ -3,6 +3,9 @@
 void UseFixedProgram();
 void TransformFixedVerts();
 void TransposeMatrix(const float* src, float* dst);
+void GetNormalMatrix(const float* mview, float* normalMat);
+matrix3_t GetNormalMatrix(const float* mview);
+
 extern GLuint g_nUberShader;
 
 inline int GetGLTypeSize(GLenum type)

@@ -8,8 +8,19 @@
 #include "gl_shader.h"
 #include "gl_texture.h"
 
+#include "glhelper.h"
+
 #include <unordered_map>
 #include <string>
+
+struct fixed_program_t;
+
+unsigned int g_nFixedPipelineShaderFlags = 0;
+#define FL(x) ((g_nFixedPipelineShaderFlags & x) != 0)
+#define EFL(x) (g_nFixedPipelineShaderFlags |= x)
+
+GLuint g_nUberShader = 0;
+fixed_program_t* activeFixedProgram = NULL;
 
 enum eShaderFlags
 {
@@ -47,6 +58,7 @@ struct fixed_uniform_t
         vector2_t vec2;
         vector3_t vec3;
         vector4_t vec4;
+        matrix3_t mat3;
         matrix4_t mat4;
     };
     
@@ -95,11 +107,43 @@ struct fixed_uniform_t
         glUniform4f(id, v.x, v.y, v.z, v.w);
         vec4 = v;
     }
+    inline void Apply(const matrix3_t& v)
+    {
+        if(id == -1 || mat3 == v) return;
+        glUniformMatrix3fv(id, 1, GL_FALSE, v.m);
+        mat3 = v;
+    }
     inline void Apply(const matrix4_t& v)
     {
         if(id == -1 || mat4 == v) return;
         glUniformMatrix4fv(id, 1, GL_FALSE, v.m);
         mat4 = v;
+    }
+};
+struct fixed_lights_uniform_t : fixed_uniform_t
+{
+    fixed_lights_uniform_t() { memset(&lights, 0, sizeof(lights)); }
+    fixed_light_t lights[8];
+    GLuint ubo = -1;
+    
+    inline void Init()
+    {
+        glGenBuffers(1, &ubo);
+        glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(lights), NULL, GL_DYNAMIC_DRAW);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
+        
+        id = glGetUniformBlockIndex(g_nUberShader, "u_lightBlock");
+        glUniformBlockBinding(g_nUberShader, id, 0);
+    }
+    inline void Apply(const fixed_light_t* v)
+    {
+        if(id == -1 || !memcmp(&lights, v, sizeof(lights))) return;
+ 
+        glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(lights), v);
+
+        memcpy(&lights, v, sizeof(lights));
     }
 };
 
@@ -108,6 +152,7 @@ struct fixed_program_t
     GLuint program;
     fixed_uniform_t uModelView;
     fixed_uniform_t uProj;
+    fixed_uniform_t uNormal;
     fixed_uniform_t uDiffuse;
     fixed_uniform_t uFogColor;
     fixed_uniform_t uFogValues;
@@ -116,14 +161,8 @@ struct fixed_program_t
     fixed_uniform_t uTexColors;
     fixed_uniform_t uTexModes;
     fixed_uniform_t uTexIDs;
+    fixed_lights_uniform_t uLights;
 };
-
-unsigned int g_nFixedPipelineShaderFlags = 0;
-#define FL(x) ((g_nFixedPipelineShaderFlags & x) != 0)
-#define EFL(x) (g_nFixedPipelineShaderFlags |= x)
-
-GLuint g_nUberShader = 0;
-fixed_program_t* activeFixedProgram = NULL;
 
 std::unordered_map<unsigned int, fixed_program_t*> g_mapFixedPrograms;
 
@@ -131,10 +170,18 @@ inline void BuildShaderFlag()
 {
     g_nFixedPipelineShaderFlags = 0;
     
-    if(globals->render.texture || globals->client.texCoord[0].enabled) EFL(SF_TEXTURED);
+    if(globals->render.texture /* || globals->client.texCoord[0].enabled*/) EFL(SF_TEXTURED);
     if(globals->ff.lightingEnabled)
     {
         EFL(SF_LIGHTING);
+        if(globals->ff.lightEnabled[0]) EFL(SF_LIGHT0);
+        if(globals->ff.lightEnabled[1]) EFL(SF_LIGHT1);
+        if(globals->ff.lightEnabled[2]) EFL(SF_LIGHT2);
+        if(globals->ff.lightEnabled[3]) EFL(SF_LIGHT3);
+        if(globals->ff.lightEnabled[4]) EFL(SF_LIGHT4);
+        if(globals->ff.lightEnabled[5]) EFL(SF_LIGHT5);
+        if(globals->ff.lightEnabled[6]) EFL(SF_LIGHT6);
+        if(globals->ff.lightEnabled[7]) EFL(SF_LIGHT7);
     }
     if(globals->ff.fogEnabled)
     {
@@ -159,30 +206,85 @@ std::string BuildVertexShader()
     s += "layout(location = 2) in vec3 a_normal;\n";
     s += "layout(location = 3) in vec4 a_color;\n";
     s += "layout(location = 8) in vec2 a_texCoord;\n";
-    s += "uniform mat4 u_modelview;";
+    s += "uniform mat4 u_modelview;\n";
     s += "uniform mat4 u_proj;\n";
+    s += "uniform mat3 u_normal;\n";
     s += "out lowp vec4 v_color;\n";
     s += "out vec2 v_texCoord;\n";
     s += "out vec4 v_position;\n";
     if(FL(SF_TEXUNIT1) || FL(SF_TEXUNIT2) || FL(SF_TEXUNIT3) || FL(SF_TEXUNIT4) ||
         FL(SF_TEXUNIT5) || FL(SF_TEXUNIT6) || FL(SF_TEXUNIT7))
     {
-        s += "layout(location = 9) vec2 a_texCoords[7];\n";
+        s += "layout(location = 9) in vec2 a_texCoords[7];\n";
         s += "out vec2 v_texCoords[7];\n";
     }
     if(FL(SF_LIGHTING))
     {
         s += "uniform vec4 u_ambientColor;\n";
     }
+    if(FL(SF_LIGHT0) || FL(SF_LIGHT1) || FL(SF_LIGHT2) || FL(SF_LIGHT3) || 
+            FL(SF_LIGHT4) || FL(SF_LIGHT5) || FL(SF_LIGHT6) || FL(SF_LIGHT7))
+    {
+        s += "struct LightData {\n";
+        s += "  vec4 position;\n";
+        s += "  vec4 ambient;\n";
+        s += "  vec4 diffuse;\n";
+        s += "  vec4 specular;\n";
+        s += "  vec4 spotDir;\n";
+        s += "  vec4 spotParams;\n"; // exp, cutoff
+        s += "  vec4 attenuationParams;\n"; // const, linear, quad
+        s += "};\n";
+        s += "layout(std140) uniform u_lightBlock {\n";
+        s += "  LightData light[8];\n";
+        s += "};\n";
+        s += "vec4 calcLight(int i, vec3 n, vec3 vPos, vec3 vDir) {\n";
+        s += "  LightData l = light[i];\n";
+        s += "  float spotExp = l.spotParams.x;\n";
+        s += "  float spotCutoff = l.spotParams.y;\n";
+        s += "  vec3 lDir;\n";
+        s += "  float att = 1.0;\n";
+        s += "  if(l.position.w == 0.0) { lDir = normalize(l.position.xyz); }\n";
+        s += "  else {\n";
+        s += "    vec3 v = l.position.xyz - vPos;\n";
+        s += "    float d = length(v);\n    lDir = v / d;\n";
+        s += "    att = 1.0 / (l.attenuationParams.x + l.attenuationParams.y * d + l.attenuationParams.z * d * d);\n";
+        s += "  }\n";
+        s += "  float NdotL = max(dot(n, lDir), 0.0);\n";
+        s += "  vec4 diff = l.diffuse * NdotL;\n";
+        s += "  vec4 spec = vec4(0.0);\n";
+        s += "  if(NdotL > 0.0) {\n";
+        s += "    float spot = 1.0;\n";
+        s += "    if(spotCutoff < 180.0) {\n";
+        s += "      float sCos = dot(-lDir, normalize(l.spotDir.xyz));\n";
+        s += "      if(sCos < cos(radians(spotCutoff))) spot = 0.0;\n";
+        s += "      else spot = pow(sCos, spotExp);\n";
+        s += "    }\n";
+        s += "    vec3 halfV = normalize(lDir + vDir);\n";
+        s += "    spec = l.specular * pow(max(dot(n, halfV), 0.0), 32.0) * spot;\n"; // 32.0 = default shininess
+        s += "    diff *= spot;\n";
+        s += "  }\n";
+        s += "  return (l.ambient + diff + spec) * att;\n";
+        s += "}\n";
+    }
     
     // Body
     s += "void main() {\n";
-    s += "  v_position = u_proj * u_modelview * vec4(a_position, 1.0);\n";
+    s += "  vec4 viewPos = u_modelview * vec4(a_position, 1.0);\n";
+    s += "  v_position = u_proj * viewPos;\n";
     if(FL(SF_LIGHTING))
     {
         s += "  lowp vec4 finalLight = u_ambientColor;\n";
-        // TODO: lights
-        s += "  v_color = finalLight * a_color;\n";
+        s += "  vec3 n = normalize(u_normal * a_normal);\n";
+        s += "  vec3 vDir = normalize(-viewPos.xyz);\n";
+        if(FL(SF_LIGHT0)) s += "  finalLight += calcLight(0, n, viewPos.xyz, vDir);\n";
+        if(FL(SF_LIGHT1)) s += "  finalLight += calcLight(1, n, viewPos.xyz, vDir);\n";
+        if(FL(SF_LIGHT2)) s += "  finalLight += calcLight(2, n, viewPos.xyz, vDir);\n";
+        if(FL(SF_LIGHT3)) s += "  finalLight += calcLight(3, n, viewPos.xyz, vDir);\n";
+        if(FL(SF_LIGHT4)) s += "  finalLight += calcLight(4, n, viewPos.xyz, vDir);\n";
+        if(FL(SF_LIGHT5)) s += "  finalLight += calcLight(5, n, viewPos.xyz, vDir);\n";
+        if(FL(SF_LIGHT6)) s += "  finalLight += calcLight(6, n, viewPos.xyz, vDir);\n";
+        if(FL(SF_LIGHT7)) s += "  finalLight += calcLight(7, n, viewPos.xyz, vDir);\n";
+        s += "  v_color = clamp(finalLight, 0.0, 1.0) * a_color;\n";
     }
     else
     {
@@ -283,6 +385,8 @@ unsigned int BuildFixedProgram()
     
     const char* vs = vertexS.c_str();
     const char* fs = fragS.c_str();
+    
+    //MSG("VS:\n%s\n\nFS:\n%s", vs, fs);
 
     GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertex, 1, &vs, 0);
@@ -327,6 +431,7 @@ void UseFixedProgram()
         
         program->uModelView.id = glGetUniformLocation(g_nUberShader, "u_modelview");
         program->uProj.id = glGetUniformLocation(g_nUberShader, "u_proj");
+        program->uNormal.id = glGetUniformLocation(g_nUberShader, "u_normal");
         program->uDiffuse.id = glGetUniformLocation(g_nUberShader, "u_texture");
         program->uFogColor.id = glGetUniformLocation(g_nUberShader, "u_fogColor");
         program->uFogValues.id = glGetUniformLocation(g_nUberShader, "u_fogValues");
@@ -335,16 +440,24 @@ void UseFixedProgram()
         program->uTexColors.id = glGetUniformLocation(g_nUberShader, "u_texColor");
         program->uTexModes.id = glGetUniformLocation(g_nUberShader, "u_texMode");
         program->uTexIDs.id = glGetUniformLocation(g_nUberShader, "u_texId");
+        
+        if(FL(SF_LIGHT0) || FL(SF_LIGHT1) || FL(SF_LIGHT2) || FL(SF_LIGHT3) || 
+            FL(SF_LIGHT4) || FL(SF_LIGHT5) || FL(SF_LIGHT6) || FL(SF_LIGHT7))
+        {
+            program->uLights.Init();
+        }
     }
     
     glUseProgram(g_nUberShader);
     
     activeFixedProgram->uModelView.Apply(globals->matrix.modelview.Current());
     activeFixedProgram->uProj.Apply(globals->matrix.projection.Current());
+    activeFixedProgram->uNormal.Apply(GetNormalMatrix(globals->matrix.modelview.Current().m));
     activeFixedProgram->uDiffuse.Apply(0);
     activeFixedProgram->uFogColor.Apply(globals->ff.fogColor);
     activeFixedProgram->uFogValues.Apply(vector3_t{globals->ff.fogStart, globals->ff.fogEnd, globals->ff.fogDensity});
     activeFixedProgram->uAmbientColor.Apply(globals->render.ambient);
+    activeFixedProgram->uLights.Apply(globals->ff.lights);
     // TODO: texture units ;(
 }
 
@@ -477,4 +590,35 @@ void TransposeMatrix(const float* src, float* dst)
             dst[i * 4 + j] = src[j * 4 + i];
         }
     }
+}
+
+void GetNormalMatrix(const float* mview, float* normalMat)
+{
+    float m00 = mview[0], m01 = mview[4], m02 = mview[8];
+    float m10 = mview[1], m11 = mview[5], m12 = mview[9];
+    float m20 = mview[2], m21 = mview[6], m22 = mview[10];
+
+    float det = m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) + m02 * (m10 * m21 - m11 * m20);
+
+    if (det == 0.0f) return;
+    const float invDet = 1.0f / det;
+
+    normalMat[0] =  (m11 * m22 - m12 * m21) * invDet;
+    normalMat[1] = -(m10 * m22 - m12 * m20) * invDet;
+    normalMat[2] =  (m10 * m21 - m11 * m20) * invDet;
+
+    normalMat[3] = -(m01 * m22 - m02 * m21) * invDet;
+    normalMat[4] =  (m00 * m22 - m02 * m20) * invDet;
+    normalMat[5] = -(m00 * m21 - m01 * m20) * invDet;
+
+    normalMat[6] =  (m01 * m12 - m02 * m11) * invDet;
+    normalMat[7] = -(m00 * m12 - m02 * m10) * invDet;
+    normalMat[8] =  (m00 * m11 - m01 * m10) * invDet;
+}
+
+matrix3_t GetNormalMatrix(const float* mview)
+{
+    matrix3_t ret;
+    GetNormalMatrix(mview, ret.m);
+    return ret;
 }

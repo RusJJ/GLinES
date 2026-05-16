@@ -40,6 +40,20 @@ struct vector4_t
     }
     float x, y, z, w;
 };
+struct matrix3_t
+{
+    float m[9];
+    
+    inline GLfloat* data()
+    {
+        return (GLfloat*)&m[0];
+    }
+    bool operator==(const matrix3_t& v)
+    {
+        for(int i = 0; i < 9; ++i) if(m[i] != v.m[i]) return false;
+        return true;
+    }
+};
 struct matrix4_t
 {
     float m[16];
@@ -198,7 +212,18 @@ struct client_state_t
 // globals.ff
 struct fixed_light_t
 {
-    
+    vector4_t pos = {0,0,1,0};
+    vector4_t ambient = {0,0,0,1};
+    vector4_t diffuse = {0,0,0,1};
+    vector4_t spec = {0,0,0,1};
+    vector4_t dir = {0,0,0,1};
+    float spotExp = 0.0f;
+    float spotCutoff = 180.0f;
+    float spotPad[2]; // std140 bullshit
+    float attenuationConst = 1.0f;
+    float attenuationLinear = 0.0f;
+    float attenuationQuad = 0.0f;
+    float attenuationPad; // std140 bullshit
 };
 struct fixed_func_state_t
 {
@@ -209,14 +234,7 @@ struct fixed_func_state_t
     GLenum logicOpMode = GL_COPY;
 
     bool lightEnabled[8] = { false };
-    float lightPos[8][4] = { {0,0,1,0} };
-    float lightAmbient[8][4] = { {0,0,0,1} };
-    float lightSpecular[8][4] = { {0,0,0,1} };
-    float lightDiffuse[8][4] = { {0,0,0,1} };
-    float lightSpotDir[8][4] = { {0,0,0,1} };
-    float lightSpotExponent[8] = { 0 };
-    float lightSpotCutoff[8] = { 0 };
-    float lightAttenuation[8][3] = { {0,0,0} };
+    fixed_light_t lights[8];
     
     float matAmbient[4] = {0.2f, 0.2f, 0.2f, 1.0f};
     float matDiffuse[4] = {0.8f, 0.8f, 0.8f, 1.0f};
@@ -346,6 +364,10 @@ struct glin_globals_t
     glin_globals_t()
     {
         MSG("Initializing GLinES...");
+        
+        ff.lights[0].ambient = {1,1,1,1};
+        ff.lights[0].spec = {1,1,1,1};
+        ff.lights[0].diffuse = {1,1,1,1};
     }
 
     extensions_t ext;
