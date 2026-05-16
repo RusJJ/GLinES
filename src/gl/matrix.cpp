@@ -78,8 +78,13 @@ GLINAPI void WRAP(glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z))
     float len = sqrtf(x*x + y*y + z*z);
     if (len > 0.0f)
     {
-        x/=len; y/=len; z/=len; 
-        GLfloat m[16] = {t*x*x+c, t*x*y-s*z, t*x*z+s*y, 0, t*x*y+s*z, t*y*y+c, t*y*z-s*x, 0, t*x*z-s*y, t*y*z+s*x, t*z*z+c, 0, 0,0,0,1};
+        x /= len; y /= len; z /= len;
+        GLfloat m[16] = {
+            t*x*x+c,   t*x*y+s*z, t*x*z-s*y, 0,
+            t*x*y-s*z, t*y*y+c,   t*y*z+s*x, 0,
+            t*x*z+s*y, t*y*z-s*x, t*z*z+c,   0,
+            0,         0,         0,         1
+        };
         globals->matrix.Current() *= m;
     }
 }

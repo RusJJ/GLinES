@@ -36,8 +36,6 @@ void WRAP(glGetObjectParameterfv(GLuint obj, GLenum pname, GLfloat *params))
     {
         glGetProgramiv(obj, pname, p);
     }
-
-    // GL4ES
     params[0] = p[0];
 }
 
@@ -58,7 +56,6 @@ void WRAP(glGetObjectParameteriv(GLuint obj, GLenum pname, GLint *params))
         glGetProgramiv(obj, pname, params);
     }
 
-    // GL4ES
     if(pname == GL_INFO_LOG_LENGTH) (*params)++;
 }
 
@@ -70,7 +67,7 @@ GLboolean WRAP(glIsProgram(GLuint program))
 void WRAP(glProgramString(GLenum target, GLenum format, GLsizei len, const GLvoid *string)) // ARB only
 {
     program_arb_t* prog = NULL;
-    char* pNewShader;
+    char* pNewShader = NULL;
     switch(target)
     {
         case 0x8620: // GL_VERTEX_PROGRAM_ARB:
@@ -83,10 +80,21 @@ void WRAP(glProgramString(GLenum target, GLenum format, GLsizei len, const GLvoi
             pNewShader = ConvertARBShader((char*)string, false);
             break;
     }
+
+    if(prog == NULL || pNewShader == NULL)
+    {
+        delete[] pNewShader;
+        return;
+    }
+
     if(prog->src != NULL) delete[] prog->src;
-    prog->src = new char[len + 1]; memcpy(prog->src, string, len);
+    prog->src = new char[len + 1];
+    memcpy(prog->src, string, len);
+    prog->src[len] = 0;
+
     glShaderSource(prog->shader, 1, (const GLchar**)&pNewShader, NULL);
     WRAP(glCompileShader(prog->shader));
+    delete[] pNewShader;
 }
 
 void WRAP(glGetProgramString(GLenum target, GLenum pname, const void *string))
@@ -185,7 +193,7 @@ void WRAP(glDeletePrograms(GLsizei n, const GLuint *programs))
         if((program = globals->programsARB[programs[i]]) != NULL)
         {
             glDeleteShader(program->shader);
-            delete[] program->src;
+            if(program->src) delete[] program->src;
             delete program;
             globals->programsARB[programs[i]] = NULL;
         }

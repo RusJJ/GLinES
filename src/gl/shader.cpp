@@ -25,7 +25,7 @@ static const char* GLES_min_fix =
 static const char* GLES_max_fix = 
     "float max(int a,float b){ return max(float(a),b); }\nfloat max(float a,int b){ return max(a,float(b)); }";
 
-static const char* GLES_clamp_fix = // Kinda lazy, taken from GL4ES
+static const char* GLES_clamp_fix =
     "float clamp(float f,int a,int b) { return clamp(f,float(a),float(b)); }\n"
     "float clamp(float f,float a,int b) { return clamp(f,a,float(b)); }\n"
     "float clamp(float f,int a,float b) { return clamp(f,float(a),b); }\n"
@@ -42,7 +42,7 @@ static const char* GLES_clamp_fix = // Kinda lazy, taken from GL4ES
 static char pszShaderLog[280];
 static char sss[256];
 static GLint shaderLen; static GLuint shaderId;
-static FILE* shaderFile;
+
 void WRAP(glCompileShader(GLuint shader))
 {
     static GLsizei length;
@@ -57,10 +57,18 @@ void WRAP(glCompileShader(GLuint shader))
     glShaderSource(shader, 1, (const GLchar**)&pNewShader, &shaderLen);
     glCompileShader(shader);
     
-    sprintf(sss, "/sdcard/srceng2/shaders_org/shader_%d.txt", shader);
-    shaderFile = fopen(sss, "w+");
-    fputs(szShaderSource, shaderFile);
-    fclose(shaderFile); // TODO: remove debug
+#ifdef GLINES_DUMP_SHADERS
+    {
+        static FILE* shaderFile;
+        sprintf(sss, "/sdcard/srceng2/shaders_org/shader_%d.txt", shader);
+        shaderFile = fopen(sss, "w+");
+        if(shaderFile) { fputs(szShaderSource, shaderFile); fclose(shaderFile); }
+
+        sprintf(sss, "/sdcard/srceng2/shaders_glin/shader_%d.txt", shader);
+        shaderFile = fopen(sss, "w+");
+        if(shaderFile) { fputs(pNewShader, shaderFile); fclose(shaderFile); }
+    }
+#endif // GLINES_DUMP_SHADERS
 
     glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
     if(status == GL_FALSE)
@@ -68,11 +76,6 @@ void WRAP(glCompileShader(GLuint shader))
         glGetShaderInfoLog(shader, sizeof(pszShaderLog), &length, pszShaderLog);
         ERR("%s shader #%d compilation error:\n%s", isVertex?"Vertex":"Fragment", shader, pszShaderLog);
     }
-
-        sprintf(sss, "/sdcard/srceng2/shaders_glin/shader_%d.txt", shader);
-        shaderFile = fopen(sss, "w+");
-        fputs(pNewShader, shaderFile);
-        fclose(shaderFile); // TODO: remove debug
 }
 
 GLuint WRAP(glCreateShader(GLenum type))
@@ -96,19 +99,19 @@ void WRAP(glLinkProgram(GLuint program))
     glLinkProgram(program);
 
     static GLint isLinked;
-	glGetProgramiv(program, GL_LINK_STATUS, &isLinked);
-	if(isLinked == GL_FALSE)
-	{
+    glGetProgramiv(program, GL_LINK_STATUS, &isLinked);
+    if(isLinked == GL_FALSE)
+    {
         ERR("[LINK] Program %d linking failed. Log:", program);
-		GLint maxLength = 0;
-		glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
+        GLint maxLength = 0;
+        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
 
-		GLchar log[4096];
-		glGetProgramInfoLog( program, sizeof(log), &maxLength, log );
-		if( maxLength )
-		{
-			ERR("[LINK] %s", log);
-		}
+        GLchar log[4096];
+        glGetProgramInfoLog( program, sizeof(log), &maxLength, log );
+        if( maxLength )
+        {
+            ERR("[LINK] %s", log);
+        }
 
         static GLsizei count; static GLuint shaders[16] = { 0 }; static char i;
         glGetAttachedShaders(program, sizeof(shaders), &count, shaders);
@@ -116,7 +119,7 @@ void WRAP(glLinkProgram(GLuint program))
         {
             ERR("[LINK] Shader %d prog %d", shaders[i], program);
         }
-	}
+    }
 }
 
 static bool bHasVersionDefinition;
@@ -135,8 +138,6 @@ void PreprocessShader(char* pszShaderSource, bool bIsVertexShader)
     }
 // Shader's Must-have things
     bHasVersionDefinition = strstr(pszShaderSource, "#version") != NULL;
-// Extensions
-    
 // Variables!
     bUsesFTransformFn =     strstr(pszShaderSource, "ftransform(") != NULL      || strstr(pszShaderSource, "ftransform (") != NULL;
     usesMin =               strstr(pszShaderSource, "min(") != NULL             || strstr(pszShaderSource, "min (") != NULL;
@@ -155,6 +156,7 @@ void PreprocessShader(char* pszShaderSource, bool bIsVertexShader)
 
 // Others
     cMaxFragData = -1; strFragDatas = pszShaderSource;
+    bUsingFragData = false;
     while((strFragDatas = strstr(strFragDatas + 11, "gl_FragData")) != NULL)
     {
         if(strFragDatas[11] == '[') ctemp = atoi(&strFragDatas[12]);
@@ -170,7 +172,7 @@ char* ConvertARBShader(char* pszShaderSource, bool bIsVertexShader)
     const char *start = pszShaderSource;
     globals->arb.errorPtr = -1;
 
-    while(start[0] != '!' && start[1] != '!')
+    while(start[0] != '!' || start[1] != '!')
     {
         ++start;
         if(start[0] == '\0' || start[1] == '\0')
@@ -202,7 +204,6 @@ static std::string newShader;
 static size_t temp;
 static const std::string strNewLine = "\n";
 
-// TODO: recheck, we dont need extensions in GLES 3.x for textures?
 #define FILL_SHADER_HEADER \
     { \
         /* Shader Header! */ \

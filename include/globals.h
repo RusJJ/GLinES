@@ -11,14 +11,14 @@
 #include <time.h>
 inline unsigned long long GetClock()
 {
-	static timespec out;
-	clock_gettime(CLOCK_MONOTONIC_RAW, &out);
-	return ((unsigned long long)out.tv_sec)*1000000000LL + out.tv_nsec;
+    static timespec out;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &out);
+    return ((unsigned long long)out.tv_sec)*1000000000LL + out.tv_nsec;
 }
 
 struct vector2_t
 {
-    bool operator==(const vector2_t& v)
+    bool operator==(const vector2_t& v) const
     {
         return (x == v.x && y == v.y);
     }
@@ -26,7 +26,7 @@ struct vector2_t
 };
 struct vector3_t
 {
-    bool operator==(const vector3_t& v)
+    bool operator==(const vector3_t& v) const
     {
         return (x == v.x && y == v.y && z == v.z);
     }
@@ -34,7 +34,7 @@ struct vector3_t
 };
 struct vector4_t
 {
-    bool operator==(const vector4_t& v)
+    bool operator==(const vector4_t& v) const
     {
         return (x == v.x && y == v.y && z == v.z && w == v.w);
     }
@@ -48,7 +48,7 @@ struct matrix3_t
     {
         return (GLfloat*)&m[0];
     }
-    bool operator==(const matrix3_t& v)
+    bool operator==(const matrix3_t& v) const
     {
         for(int i = 0; i < 9; ++i) if(m[i] != v.m[i]) return false;
         return true;
@@ -62,16 +62,16 @@ struct matrix4_t
     {
         return (GLfloat*)&m[0];
     }
-    bool operator==(const matrix4_t& v)
+    bool operator==(const matrix4_t& v) const
     {
         for(int i = 0; i < 16; ++i) if(m[i] != v.m[i]) return false;
         return true;
     }
-    matrix4_t operator*(const matrix4_t& v)
+    matrix4_t operator*(const matrix4_t& v) const
     {
         return MulRet(v);
     }
-    matrix4_t operator*(const float* v)
+    matrix4_t operator*(const float* v) const
     {
         return MulRet(*(const matrix4_t*)v);
     }
@@ -85,7 +85,7 @@ struct matrix4_t
         *this = *this * *(const matrix4_t*)v;
         return *this;
     }
-    matrix4_t MulRet(const matrix4_t& v)
+    matrix4_t MulRet(const matrix4_t& v) const
     {
         matrix4_t res;
         for (int col = 0; col < 4; ++col)
@@ -101,9 +101,18 @@ struct matrix4_t
         }
         return res;
     }
-    matrix4_t TransposeRet()
+
+    matrix4_t TransposeRet() const
     {
-        
+        matrix4_t res;
+        for (int i = 0; i < 4; ++i)
+        {
+            for (int j = 0; j < 4; ++j)
+            {
+                res.m[i * 4 + j] = m[j * 4 + i];
+            }
+        }
+        return res;
     }
     
     static inline matrix4_t Identity()
@@ -219,11 +228,11 @@ struct fixed_light_t
     vector4_t dir = {0,0,0,1};
     float spotExp = 0.0f;
     float spotCutoff = 180.0f;
-    float spotPad[2]; // std140 bullshit
+    float spotPad[2]; // std140
     float attenuationConst = 1.0f;
     float attenuationLinear = 0.0f;
     float attenuationQuad = 0.0f;
-    float attenuationPad; // std140 bullshit
+    float attenuationPad; // std140
 };
 struct fixed_func_state_t
 {
@@ -248,11 +257,11 @@ struct fixed_func_state_t
     float fogStart = 0.0f;
     float fogEnd = 1.0f;
     
-    float clipPlanes[6][4] = { { 0.0f } } ;
+    float clipPlanes[6][4] = { { 0.0f } };
     bool clipPlaneOn[6] = { false };
 
     GLenum shadeModel = GL_SMOOTH;
-    GLint texEnvMode = GL_MODULATE; // GL_MODULATE, GL_DECAL, GL_BLEND, GL_REPLACE
+    GLint texEnvMode = GL_MODULATE;
     GLint activeTextureUnit = 0;
 };
 
@@ -298,8 +307,8 @@ struct query_desc_t
 {
     GLuint id;
     GLenum target;
+    unsigned long long start;
     bool active;
-    GLuint start;
 };
 
 // globals.programs[*]
@@ -352,10 +361,10 @@ struct extensions_t
     bool checked_exts_for_shaders = false;
     bool checked_exts_for_textures = false;
     
-    bool hasAlphaFuncQCOM;
-    bool hasTextureLods;
-    bool hasDXT;
-    bool hasClipCull; // GL_EXT_clip_cull_distance
+    bool hasAlphaFuncQCOM = false;
+    bool hasTextureLods = false;
+    bool hasDXT = false;
+    bool hasClipCull = false; // GL_EXT_clip_cull_distance
 };
 
 // globals
@@ -382,7 +391,7 @@ struct glin_globals_t
     #ifdef USE_MAP_FOR_SHADERS_DESC
         std::unordered_map<GLuint, shader_desc_t*> shaders;
         std::unordered_map<GLuint, program_arb_t*> programsARB;
-        std::unordered_map<GLuint, shader_desc_t*> textures;
+        std::unordered_map<GLuint, texture_desc_t*> textures;
         std::unordered_map<GLuint, query_desc_t*> queries;
     #else
         shader_desc_t* shaders[MAX_COUNT_OF_SAVED_SHADERS] = { 0 };

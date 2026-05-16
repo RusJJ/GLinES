@@ -92,13 +92,16 @@ void WRAP(glBindBuffer(GLenum target, GLuint buffer))
     glBindBuffer(target, buffer);
 }
 
-
 void WRAP(glBindBufferRange(GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size))
 {
-    
+    if(target == GL_UNIFORM_BUFFER) globals->client.boundUniformBuffer = buffer;
+
+    glBindBufferRange(target, index, buffer, offset, size);
 }
 
 void WRAP(glBindBufferBase(GLenum target, GLuint index, GLuint buffer))
 {
-    
+    if(target == GL_UNIFORM_BUFFER) globals->client.boundUniformBuffer = buffer;
+
+    glBindBufferBase(target, index, buffer);
 }
