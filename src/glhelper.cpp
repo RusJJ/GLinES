@@ -45,7 +45,8 @@ enum eShaderFlags
     SF_TEXUNIT7 = (1 << 18),
     SF_LIGHTING = (1 << 19),
     SF_COLOR_MAT = (1 << 20),
-    SF_FLATSHADING = (1 << 21)
+    SF_FLATSHADING = (1 << 21),
+    SF_AFFINE = (1 << 22)
 };
 
 struct fixed_uniform_t
@@ -208,6 +209,7 @@ inline void BuildShaderFlag()
     if(globals->client.texCoord[6].enabled) EFL(SF_TEXUNIT6);
     if(globals->client.texCoord[7].enabled) EFL(SF_TEXUNIT7);
     if(globals->ff.shadeModel == GL_FLAT) EFL(SF_FLATSHADING);
+    if(globals->ff.affineTexcoord) EFL(SF_AFFINE);
 }
 
 std::string BuildVertexShader()
@@ -229,7 +231,14 @@ std::string BuildVertexShader()
     {
         s += "out lowp vec4 v_color;\n";
     }
-    s += "out vec2 v_texCoord;\n";
+    if(FL(SF_AFFINE))
+    {
+        s += "noperspective out vec2 v_texCoord;\n";
+    }
+    else
+    {
+        s += "out vec2 v_texCoord;\n";
+    }
     s += "out vec4 v_position;\n";
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
     {
@@ -367,7 +376,14 @@ std::string BuildFragmentShader()
     {
         s += "in lowp vec4 v_color;\n";
     }
-    s += "in vec2 v_texCoord;\n";
+    if(FL(SF_AFFINE))
+    {
+        s += "noperspective in vec2 v_texCoord;\n";
+    }
+    else
+    {
+        s += "in vec2 v_texCoord;\n";
+    }
     s += "in vec4 v_position;\n";
     s += "uniform sampler2D u_texture;\n";
     s += "out lowp vec4 out_FragColor;\n";

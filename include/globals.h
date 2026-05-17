@@ -266,6 +266,7 @@ struct fixed_func_state_t
     
     bool lightModelTwoSide = false;
     bool lightModelLocalViewer = false;
+    bool affineTexcoord = false;
 
     GLenum shadeModel = GL_SMOOTH;
     GLint texEnvMode = GL_MODULATE;

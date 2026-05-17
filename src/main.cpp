@@ -216,6 +216,7 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glGetFloatv);
     GLIN_ALL(glGetDoublev);
     GLIN_ALL(glPixelStoref);
+    GLIN_ALL(glHint);
 // Incomplete
     GLIN_ALL(glGetCompressedTexImage);
 // Not implemented

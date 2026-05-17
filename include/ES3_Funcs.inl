@@ -74,7 +74,6 @@ GL_ALL(glGetUniformLocation);
 GL_ALL(glGetVertexAttribfv);
 GL_ALL(glGetVertexAttribiv);
 GL_ALL(glGetVertexAttribPointerv);
-GL_ALL(glHint);
 GL_ALL(glIsBuffer);
 GLIN_ALL(glIsEnabled);
 GL_ALL(glIsFramebuffer);

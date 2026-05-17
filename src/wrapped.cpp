@@ -548,3 +548,15 @@ void WRAP(glDrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type, cons
 {
     WRAPCALL(glDrawElementsBaseVertex(mode, count, type, indices, basevertex));
 }
+
+void WRAP(glHint(GLenum target, GLenum mode))
+{
+    switch(target)
+    {
+        case GL_PERSPECTIVE_CORRECTION_HINT:
+            globals->ff.affineTexcoord = (mode == GL_FASTEST);
+            break;
+            
+        default: return glHint(target, mode);
+    }
+}
