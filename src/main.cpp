@@ -115,6 +115,7 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glColor3f);
     GLIN_MAP(glColor4f);
     GLIN_MAP(glColor4sv);
+    GLIN_MAP(glNormal3f);
     GLIN_MAP(glVertex3f);
     GLIN_MAP(glVertex3i);
     GLIN_MAP(glVertex2f);

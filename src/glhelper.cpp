@@ -107,16 +107,16 @@ struct fixed_uniform_t
         glUniform4f(id, v.x, v.y, v.z, v.w);
         vec4 = v;
     }
-    inline void Apply(const matrix3_t& v)
+    inline void Apply(const matrix3_t& v, bool transpose = false)
     {
         if(id == -1 || mat3 == v) return;
-        glUniformMatrix3fv(id, 1, GL_FALSE, v.m);
+        glUniformMatrix3fv(id, 1, transpose ? GL_TRUE : GL_FALSE, v.m);
         mat3 = v;
     }
-    inline void Apply(const matrix4_t& v)
+    inline void Apply(const matrix4_t& v, bool transpose = false)
     {
         if(id == -1 || mat4 == v) return;
-        glUniformMatrix4fv(id, 1, GL_FALSE, v.m);
+        glUniformMatrix4fv(id, 1, transpose ? GL_TRUE : GL_FALSE, v.m);
         mat4 = v;
     }
 };
@@ -189,7 +189,7 @@ inline void BuildShaderFlag()
         if(globals->ff.lightEnabled[5]) EFL(SF_LIGHT5);
         if(globals->ff.lightEnabled[6]) EFL(SF_LIGHT6);
         if(globals->ff.lightEnabled[7]) EFL(SF_LIGHT7);
-        if(globals->ff.colorMaterial) EFL(SF_COLOR_MAT);
+        if(globals->render.colorMaterial) EFL(SF_COLOR_MAT);
     }
     if(globals->ff.fogEnabled)
     {
@@ -307,8 +307,16 @@ std::string BuildVertexShader()
     }
     if(FL(SF_LIGHTING))
     {
+        if(globals->settings.matrix_transpose_invector)
+        {
+            s += "  mat3 normalMatrix = transpose(inverse(mat3(u_modelview)));\n";
+        }
+        else
+        {
+            s += "  mat3 normalMatrix = u_normal;\n";
+        }
         s += "  lowp vec4 finalLight = u_ambientColor * u_matAmbient + u_matEmission;\n";
-        s += "  vec3 n = normalize(u_normal * a_normal);\n";
+        s += "  vec3 n = normalize(normalMatrix * a_normal);\n";
         s += "  vec3 vDir = normalize(-viewPos.xyz);\n";
         if(FL(SF_LIGHT0)) s += "  finalLight += calcLight(0, n, viewPos.xyz, vDir);\n";
         if(FL(SF_LIGHT1)) s += "  finalLight += calcLight(1, n, viewPos.xyz, vDir);\n";
@@ -523,7 +531,10 @@ void UseFixedProgram()
     
     activeFixedProgram->uModelView.Apply(globals->matrix.modelview.Current());
     activeFixedProgram->uProj.Apply(globals->matrix.projection.Current());
-    activeFixedProgram->uNormal.Apply(GetNormalMatrix(globals->matrix.modelview.Current().m));
+    if(globals->settings.matrix_transpose_invector)
+    {
+        activeFixedProgram->uNormal.Apply(GetNormalMatrix(globals->matrix.modelview.Current().m), true);
+    }
     activeFixedProgram->uDiffuse.Apply(0);
     activeFixedProgram->uFogColor.Apply(globals->ff.fogColor);
     activeFixedProgram->uFogValues.Apply(vector3_t{globals->ff.fogStart, globals->ff.fogEnd, globals->ff.fogDensity});

@@ -374,6 +374,12 @@ struct extensions_t
     bool hasClipCull = false; // GL_EXT_clip_cull_distance
 };
 
+// globals.settings
+struct settings_t
+{
+    bool matrix_transpose_invector = true;
+};
+
 // globals
 struct glin_globals_t
 {
@@ -393,6 +399,7 @@ struct glin_globals_t
     matrices_type_stack_t matrix;
     fixed_func_state_t ff;
     client_state_t client;
+    settings_t settings;
 
     GLenum lastPrimitiveMode;
     #ifdef USE_MAP_FOR_SHADERS_DESC
