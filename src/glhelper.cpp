@@ -1,5 +1,4 @@
 #include "GLES.h"
-#include "wrapped.h"
 #include "gl_buffer.h"
 #include "gl_matrix.h"
 #include "gl_object.h"
@@ -16,8 +15,8 @@
 struct fixed_program_t;
 
 unsigned int g_nFixedPipelineShaderFlags = 0;
-#define FL(x) ((g_nFixedPipelineShaderFlags & x) != 0)
-#define EFL(x) (g_nFixedPipelineShaderFlags |= x)
+#define FL(x) ((g_nFixedPipelineShaderFlags & (x)) != 0)
+#define EFL(x) (g_nFixedPipelineShaderFlags |= (x))
 
 GLuint g_nUberShader = 0;
 fixed_program_t* activeFixedProgram = NULL;
@@ -44,7 +43,8 @@ enum eShaderFlags
     SF_TEXUNIT5 = (1 << 16),
     SF_TEXUNIT6 = (1 << 17),
     SF_TEXUNIT7 = (1 << 18),
-    SF_LIGHTING = (1 << 19)
+    SF_LIGHTING = (1 << 19),
+    SF_COLOR_MAT = (1 << 20)
 };
 
 struct fixed_uniform_t
@@ -120,11 +120,13 @@ struct fixed_uniform_t
         mat4 = v;
     }
 };
+
 struct fixed_lights_uniform_t : fixed_uniform_t
 {
     fixed_lights_uniform_t() { memset(&lights, 0, sizeof(lights)); }
     fixed_light_t lights[8];
-    GLuint ubo = -1;
+
+    GLuint ubo = 0;
     
     inline void Init()
     {
@@ -161,6 +163,11 @@ struct fixed_program_t
     fixed_uniform_t uTexColors;
     fixed_uniform_t uTexModes;
     fixed_uniform_t uTexIDs;
+    fixed_uniform_t uShininess;
+    fixed_uniform_t uMatAmbient;
+    fixed_uniform_t uMatDiffuse;
+    fixed_uniform_t uMatSpecular;
+    fixed_uniform_t uMatEmission;
     fixed_lights_uniform_t uLights;
 };
 
@@ -170,7 +177,7 @@ inline void BuildShaderFlag()
 {
     g_nFixedPipelineShaderFlags = 0;
     
-    if(globals->render.texture /* || globals->client.texCoord[0].enabled*/) EFL(SF_TEXTURED);
+    if(globals->render.texture) EFL(SF_TEXTURED);
     if(globals->ff.lightingEnabled)
     {
         EFL(SF_LIGHTING);
@@ -182,6 +189,7 @@ inline void BuildShaderFlag()
         if(globals->ff.lightEnabled[5]) EFL(SF_LIGHT5);
         if(globals->ff.lightEnabled[6]) EFL(SF_LIGHT6);
         if(globals->ff.lightEnabled[7]) EFL(SF_LIGHT7);
+        if(globals->ff.colorMaterial) EFL(SF_COLOR_MAT);
     }
     if(globals->ff.fogEnabled)
     {
@@ -212,15 +220,30 @@ std::string BuildVertexShader()
     s += "out lowp vec4 v_color;\n";
     s += "out vec2 v_texCoord;\n";
     s += "out vec4 v_position;\n";
+    if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
+    {
+        s += "out float v_eyeDepth;\n";
+    }
     if(FL(SF_TEXUNIT1) || FL(SF_TEXUNIT2) || FL(SF_TEXUNIT3) || FL(SF_TEXUNIT4) ||
         FL(SF_TEXUNIT5) || FL(SF_TEXUNIT6) || FL(SF_TEXUNIT7))
     {
-        s += "layout(location = 9) in vec2 a_texCoords[7];\n";
+        s += "layout(location = 9)  in vec2 a_texCoord1;\n";
+        s += "layout(location = 10) in vec2 a_texCoord2;\n";
+        s += "layout(location = 11) in vec2 a_texCoord3;\n";
+        s += "layout(location = 12) in vec2 a_texCoord4;\n";
+        s += "layout(location = 13) in vec2 a_texCoord5;\n";
+        s += "layout(location = 14) in vec2 a_texCoord6;\n";
+        s += "layout(location = 15) in vec2 a_texCoord7;\n";
         s += "out vec2 v_texCoords[7];\n";
     }
     if(FL(SF_LIGHTING))
     {
         s += "uniform vec4 u_ambientColor;\n";
+        s += "uniform vec4 u_matAmbient;\n";
+        s += "uniform vec4 u_matDiffuse;\n";
+        s += "uniform vec4 u_matSpecular;\n";
+        s += "uniform vec4 u_matEmission;\n";
+        s += "uniform float u_shininess;\n";
     }
     if(FL(SF_LIGHT0) || FL(SF_LIGHT1) || FL(SF_LIGHT2) || FL(SF_LIGHT3) || 
             FL(SF_LIGHT4) || FL(SF_LIGHT5) || FL(SF_LIGHT6) || FL(SF_LIGHT7))
@@ -231,49 +254,60 @@ std::string BuildVertexShader()
         s += "  vec4 diffuse;\n";
         s += "  vec4 specular;\n";
         s += "  vec4 spotDir;\n";
-        s += "  vec4 spotParams;\n"; // exp, cutoff
-        s += "  vec4 attenuationParams;\n"; // const, linear, quad
+        s += "  vec4 spotParams;\n";       // x=exp, y=cutoff
+        s += "  vec4 attenuationParams;\n"; // x=const, y=linear, z=quad
         s += "};\n";
         s += "layout(std140) uniform u_lightBlock {\n";
         s += "  LightData light[8];\n";
         s += "};\n";
         s += "vec4 calcLight(int i, vec3 n, vec3 vPos, vec3 vDir) {\n";
         s += "  LightData l = light[i];\n";
-        s += "  float spotExp = l.spotParams.x;\n";
+        s += "  float spotExp    = l.spotParams.x;\n";
         s += "  float spotCutoff = l.spotParams.y;\n";
         s += "  vec3 lDir;\n";
         s += "  float att = 1.0;\n";
-        s += "  if(l.position.w == 0.0) { lDir = normalize(l.position.xyz); }\n";
-        s += "  else {\n";
+        s += "  if(l.position.w == 0.0) {\n";
+        s += "    lDir = normalize(l.position.xyz);\n";
+        s += "  } else {\n";
         s += "    vec3 v = l.position.xyz - vPos;\n";
-        s += "    float d = length(v);\n    lDir = v / d;\n";
-        s += "    att = 1.0 / (l.attenuationParams.x + l.attenuationParams.y * d + l.attenuationParams.z * d * d);\n";
+        s += "    float d = length(v);\n";
+        s += "    lDir = v / d;\n";
+        s += "    att = 1.0 / (l.attenuationParams.x\n";
+        s += "               + l.attenuationParams.y * d\n";
+        s += "               + l.attenuationParams.z * d * d);\n";
         s += "  }\n";
         s += "  float NdotL = max(dot(n, lDir), 0.0);\n";
-        s += "  vec4 diff = l.diffuse * NdotL;\n";
+        s += "  vec4 diff = u_matDiffuse * l.diffuse * NdotL;\n";
+        s += "  vec4 amb  = u_matAmbient * l.ambient;\n";
         s += "  vec4 spec = vec4(0.0);\n";
         s += "  if(NdotL > 0.0) {\n";
         s += "    float spot = 1.0;\n";
         s += "    if(spotCutoff < 180.0) {\n";
         s += "      float sCos = dot(-lDir, normalize(l.spotDir.xyz));\n";
         s += "      if(sCos < cos(radians(spotCutoff))) spot = 0.0;\n";
-        s += "      else spot = pow(sCos, spotExp);\n";
+        s += "      else spot = pow(max(sCos, 0.0), spotExp);\n";
         s += "    }\n";
         s += "    vec3 halfV = normalize(lDir + vDir);\n";
-        s += "    spec = l.specular * pow(max(dot(n, halfV), 0.0), 32.0) * spot;\n"; // 32.0 = default shininess
+        s += "    float sh = max(u_shininess, 1.0);\n";
+        s += "    spec = u_matSpecular * l.specular * pow(max(dot(n, halfV), 0.0), sh) * spot;\n";
         s += "    diff *= spot;\n";
         s += "  }\n";
-        s += "  return (l.ambient + diff + spec) * att;\n";
+        s += "  return (amb + diff + spec) * att;\n";
         s += "}\n";
     }
     
     // Body
     s += "void main() {\n";
     s += "  vec4 viewPos = u_modelview * vec4(a_position, 1.0);\n";
-    s += "  v_position = u_proj * viewPos;\n";
+    s += "  v_position   = u_proj * viewPos;\n";
+    s += "  gl_Position  = v_position;\n";
+    if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
+    {
+        s += "  v_eyeDepth = -viewPos.z;\n";
+    }
     if(FL(SF_LIGHTING))
     {
-        s += "  lowp vec4 finalLight = u_ambientColor;\n";
+        s += "  lowp vec4 finalLight = u_ambientColor * u_matAmbient + u_matEmission;\n";
         s += "  vec3 n = normalize(u_normal * a_normal);\n";
         s += "  vec3 vDir = normalize(-viewPos.xyz);\n";
         if(FL(SF_LIGHT0)) s += "  finalLight += calcLight(0, n, viewPos.xyz, vDir);\n";
@@ -290,16 +324,15 @@ std::string BuildVertexShader()
     {
         s += "  v_color = a_color;\n";
     }
-    if(FL(SF_TEXUNIT1)) s += "  v_texCoords[0] = a_texCoords[0];\n";
-    if(FL(SF_TEXUNIT2)) s += "  v_texCoords[1] = a_texCoords[1];\n";
-    if(FL(SF_TEXUNIT3)) s += "  v_texCoords[2] = a_texCoords[2];\n";
-    if(FL(SF_TEXUNIT4)) s += "  v_texCoords[3] = a_texCoords[3];\n";
-    if(FL(SF_TEXUNIT5)) s += "  v_texCoords[4] = a_texCoords[4];\n";
-    if(FL(SF_TEXUNIT6)) s += "  v_texCoords[5] = a_texCoords[5];\n";
-    if(FL(SF_TEXUNIT7)) s += "  v_texCoords[6] = a_texCoords[6];\n";
+    if(FL(SF_TEXUNIT1)) s += "  v_texCoords[0] = a_texCoord1;\n";
+    if(FL(SF_TEXUNIT2)) s += "  v_texCoords[1] = a_texCoord2;\n";
+    if(FL(SF_TEXUNIT3)) s += "  v_texCoords[2] = a_texCoord3;\n";
+    if(FL(SF_TEXUNIT4)) s += "  v_texCoords[3] = a_texCoord4;\n";
+    if(FL(SF_TEXUNIT5)) s += "  v_texCoords[4] = a_texCoord5;\n";
+    if(FL(SF_TEXUNIT6)) s += "  v_texCoords[5] = a_texCoord6;\n";
+    if(FL(SF_TEXUNIT7)) s += "  v_texCoords[6] = a_texCoord7;\n";
     s += "  v_texCoord = a_texCoord;\n";
-    s += "  gl_Position = v_position;\n";
-    s += "}";
+    s += "}\n";
     return s;
 }
 
@@ -311,25 +344,25 @@ std::string BuildFragmentShader()
     s += "in vec2 v_texCoord;\n";
     s += "in vec4 v_position;\n";
     s += "uniform sampler2D u_texture;\n";
-    s += "uniform mat4 u_proj;\n";
     s += "out lowp vec4 out_FragColor;\n";
     s += "lowp vec4 finalColor;\n";
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
     {
+        s += "in float v_eyeDepth;\n";
         s += "uniform vec4 u_fogColor;\n";
-        s += "uniform vec3 u_fogValues;\n";
+        s += "uniform vec3 u_fogValues;\n"; // x=start, y=end, z=density
         s += "float getFogValue() {\n";
         if(FL(SF_FOG_LINEAR))
         {
-            s += "  float factor = (u_fogValues.y - v_position.w) / (u_fogValues.y - u_fogValues.x);\n";
+            s += "  float factor = (u_fogValues.y - v_eyeDepth) / (u_fogValues.y - u_fogValues.x);\n";
         }
         else if(FL(SF_FOG_EXP))
         {
-            s += "  float factor = exp(-u_fogValues.z * v_position.w);\n";
+            s += "  float factor = exp(-u_fogValues.z * v_eyeDepth);\n";
         }
-        else if(FL(SF_FOG_EXP2))
+        else // SF_FOG_EXP2
         {
-            s += "  float factor = exp(-pow(u_fogValues.z * v_position.w, 2.0));\n";
+            s += "  float factor = exp(-pow(u_fogValues.z * v_eyeDepth, 2.0));\n";
         }
         s += "  return clamp(factor, 0.0, 1.0);\n";
         s += "}\n";
@@ -339,17 +372,17 @@ std::string BuildFragmentShader()
     {
         s += "in vec2 v_texCoords[7];\n";
         s += "uniform vec4 u_texColor[7];\n";
-        s += "uniform int u_texMode[7];\n";
+        s += "uniform int  u_texMode[7];\n";
         s += "uniform sampler2D u_texId[7];\n";
         s += "void mixUnitColor(int unit) {\n";
         s += "  int mode = u_texMode[unit];\n";
         s += "  lowp vec4 texColor = texture(u_texId[unit], v_texCoords[unit]);\n";
-        s += "  if(mode == 0) { finalColor = texColor; return; }\n"; // GL_REPLACE
-        s += "  if(mode == 1) { finalColor *= texColor; return; }\n"; // GL_MODULATE (default)
+        s += "  if(mode == 0) { finalColor = texColor; return; }\n";             // GL_REPLACE
+        s += "  if(mode == 1) { finalColor *= texColor; return; }\n";            // GL_MODULATE
         s += "  if(mode == 2) { finalColor = vec4(finalColor.rgb + texColor.rgb, finalColor.a * texColor.a); return; }\n"; // GL_ADD
         s += "  if(mode == 3) { finalColor = vec4(mix(finalColor.rgb, u_texColor[unit].rgb, texColor.rgb), finalColor.a * texColor.a); return; }\n"; // GL_BLEND
         s += "  if(mode == 4) { finalColor = vec4(mix(finalColor.rgb, texColor.rgb, texColor.a), finalColor.a); return; }\n"; // GL_DECAL
-        s += "}\n"; // TODO: GL_COMBINE..?
+        s += "}\n";
     }
     
     // Body
@@ -360,9 +393,9 @@ std::string BuildFragmentShader()
     }
     else
     {
-        s+= "  finalColor = v_color;\n";
+        s += "  finalColor = v_color;\n";
     }
-    if(FL(SF_TEXUNIT1)) s += "  mixUnitColor(0);\n"; // TODO: also TEXUNIT0...
+    if(FL(SF_TEXUNIT1)) s += "  mixUnitColor(0);\n";
     if(FL(SF_TEXUNIT2)) s += "  mixUnitColor(1);\n";
     if(FL(SF_TEXUNIT3)) s += "  mixUnitColor(2);\n";
     if(FL(SF_TEXUNIT4)) s += "  mixUnitColor(3);\n";
@@ -371,35 +404,68 @@ std::string BuildFragmentShader()
     if(FL(SF_TEXUNIT7)) s += "  mixUnitColor(6);\n";
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
     {
-        s+= "  finalColor.rgb = mix(u_fogColor.rgb, finalColor.rgb, getFogValue());\n";
+        s += "  finalColor.rgb = mix(u_fogColor.rgb, finalColor.rgb, getFogValue());\n";
     }
     s += "  out_FragColor = finalColor;\n";
-    s += "}";
+    s += "}\n";
     return s;
 }
 
 unsigned int BuildFixedProgram()
 {
     std::string vertexS = BuildVertexShader();
-    std::string fragS = BuildFragmentShader();
+    std::string fragS   = BuildFragmentShader();
     
     const char* vs = vertexS.c_str();
     const char* fs = fragS.c_str();
-    
-    //MSG("VS:\n%s\n\nFS:\n%s", vs, fs);
 
     GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertex, 1, &vs, 0);
     glCompileShader(vertex);
 
+    // Log vertex shader errors
+    {
+        GLint status = 0;
+        glGetShaderiv(vertex, GL_COMPILE_STATUS, &status);
+        if(status == GL_FALSE)
+        {
+            char log[2048]; GLsizei len;
+            glGetShaderInfoLog(vertex, sizeof(log), &len, log);
+            ERR("[Fixed VS] Compile error: %s", log);
+        }
+    }
+
     GLuint fragment = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragment, 1, &fs, 0);
     glCompileShader(fragment);
+
+    // Log fragment shader errors
+    {
+        GLint status = 0;
+        glGetShaderiv(fragment, GL_COMPILE_STATUS, &status);
+        if(status == GL_FALSE)
+        {
+            char log[2048]; GLsizei len;
+            glGetShaderInfoLog(fragment, sizeof(log), &len, log);
+            ERR("[Fixed FS] Compile error: %s", log);
+        }
+    }
 
     GLuint program = glCreateProgram();
     glAttachShader(program, vertex);
     glAttachShader(program, fragment);
     glLinkProgram(program);
+
+    {
+        GLint status = 0;
+        glGetProgramiv(program, GL_LINK_STATUS, &status);
+        if(status == GL_FALSE)
+        {
+            char log[2048]; GLsizei len;
+            glGetProgramInfoLog(program, sizeof(log), &len, log);
+            ERR("[Fixed Prog] Link error: %s", log);
+        }
+    }
 
     glDeleteShader(vertex);
     glDeleteShader(fragment);
@@ -408,7 +474,7 @@ unsigned int BuildFixedProgram()
 
 void UseFixedProgram()
 {
-    // If we have our own shader. // TODO: pass uniforms!
+    // If the app has its own shader active, don't override it.
     if(globals->gl.activeProgram != 0) return;
     
     BuildShaderFlag();
@@ -429,17 +495,22 @@ void UseFixedProgram()
         activeFixedProgram = program;
         g_mapFixedPrograms.insert({ g_nFixedPipelineShaderFlags, program });
         
-        program->uModelView.id = glGetUniformLocation(g_nUberShader, "u_modelview");
-        program->uProj.id = glGetUniformLocation(g_nUberShader, "u_proj");
-        program->uNormal.id = glGetUniformLocation(g_nUberShader, "u_normal");
-        program->uDiffuse.id = glGetUniformLocation(g_nUberShader, "u_texture");
-        program->uFogColor.id = glGetUniformLocation(g_nUberShader, "u_fogColor");
-        program->uFogValues.id = glGetUniformLocation(g_nUberShader, "u_fogValues");
+        program->uModelView.id    = glGetUniformLocation(g_nUberShader, "u_modelview");
+        program->uProj.id         = glGetUniformLocation(g_nUberShader, "u_proj");
+        program->uNormal.id       = glGetUniformLocation(g_nUberShader, "u_normal");
+        program->uDiffuse.id      = glGetUniformLocation(g_nUberShader, "u_texture");
+        program->uFogColor.id     = glGetUniformLocation(g_nUberShader, "u_fogColor");
+        program->uFogValues.id    = glGetUniformLocation(g_nUberShader, "u_fogValues");
         program->uAmbientColor.id = glGetUniformLocation(g_nUberShader, "u_ambientColor");
-        program->uTexCoords.id = glGetUniformLocation(g_nUberShader, "u_texCoords");
-        program->uTexColors.id = glGetUniformLocation(g_nUberShader, "u_texColor");
-        program->uTexModes.id = glGetUniformLocation(g_nUberShader, "u_texMode");
-        program->uTexIDs.id = glGetUniformLocation(g_nUberShader, "u_texId");
+        program->uTexCoords.id    = glGetUniformLocation(g_nUberShader, "u_texCoords");
+        program->uTexColors.id    = glGetUniformLocation(g_nUberShader, "u_texColor");
+        program->uTexModes.id     = glGetUniformLocation(g_nUberShader, "u_texMode");
+        program->uTexIDs.id       = glGetUniformLocation(g_nUberShader, "u_texId");
+        program->uShininess.id    = glGetUniformLocation(g_nUberShader, "u_shininess");
+        program->uMatAmbient.id   = glGetUniformLocation(g_nUberShader, "u_matAmbient");
+        program->uMatDiffuse.id   = glGetUniformLocation(g_nUberShader, "u_matDiffuse");
+        program->uMatSpecular.id  = glGetUniformLocation(g_nUberShader, "u_matSpecular");
+        program->uMatEmission.id  = glGetUniformLocation(g_nUberShader, "u_matEmission");
         
         if(FL(SF_LIGHT0) || FL(SF_LIGHT1) || FL(SF_LIGHT2) || FL(SF_LIGHT3) || 
             FL(SF_LIGHT4) || FL(SF_LIGHT5) || FL(SF_LIGHT6) || FL(SF_LIGHT7))
@@ -458,7 +529,12 @@ void UseFixedProgram()
     activeFixedProgram->uFogValues.Apply(vector3_t{globals->ff.fogStart, globals->ff.fogEnd, globals->ff.fogDensity});
     activeFixedProgram->uAmbientColor.Apply(globals->render.ambient);
     activeFixedProgram->uLights.Apply(globals->ff.lights);
-    // TODO: texture units ;(
+    activeFixedProgram->uShininess.Apply(globals->ff.matShininess);
+    activeFixedProgram->uMatAmbient.Apply(*(const vector4_t*)globals->ff.matAmbient);
+    activeFixedProgram->uMatDiffuse.Apply(*(const vector4_t*)globals->ff.matDiffuse);
+    activeFixedProgram->uMatSpecular.Apply(*(const vector4_t*)globals->ff.matSpecular);
+    activeFixedProgram->uMatEmission.Apply(*(const vector4_t*)globals->ff.matEmission);
+    // TODO: per-unit texture uniforms (u_texColor, u_texMode, u_texId)
 }
 
 void TransformFixedVerts()
@@ -469,10 +545,12 @@ void TransformFixedVerts()
     std::vector<vector2_t> finalTexCoords;
     std::vector<vector3_t> finalNormals;
 
-    if(drawMode == GL_QUADS) // GLES doesnt really have GL_QUADS
+    if(drawMode == GL_QUADS) // GLES doesn't have GL_QUADS
     {
         drawMode = GL_TRIANGLES;
-        for(size_t i = 0; i + 3 < globals->render.vertices.size(); i += 4)
+        size_t n = globals->render.vertices.size();
+        
+        for(size_t i = 0; i + 3 < n; i += 4)
         {
             finalVerts.push_back(globals->render.vertices[i+0]);
             finalVerts.push_back(globals->render.vertices[i+1]);
@@ -510,22 +588,24 @@ void TransformFixedVerts()
             }
         }
     }
-    else if(drawMode == 0x0009) // GL_POLYGON
+    else if(drawMode == 0x0009) // GL_POLYGON -> triangle fan
     {
         drawMode = GL_TRIANGLE_FAN; 
-        finalVerts = globals->render.vertices;
-        finalColors = globals->render.colors;
-        finalTexCoords = globals->render.texcoords;
-        finalNormals = globals->render.normals;
+        finalVerts      = globals->render.vertices;
+        finalColors     = globals->render.colors;
+        finalTexCoords  = globals->render.texcoords;
+        finalNormals    = globals->render.normals;
     }
     else
     {
-        finalVerts = globals->render.vertices;
-        finalColors = globals->render.colors;
-        finalTexCoords = globals->render.texcoords;
-        finalNormals = globals->render.normals;
+        finalVerts      = globals->render.vertices;
+        finalColors     = globals->render.colors;
+        finalTexCoords  = globals->render.texcoords;
+        finalNormals    = globals->render.normals;
     }
     
+    if(finalVerts.empty()) return;
+
     GLuint* vbos = &globals->render.fixedVBO[0];
     if(globals->render.fixedVAO == 0)
     {
@@ -549,6 +629,8 @@ void TransformFixedVerts()
     else
     {
         glDisableVertexAttribArray(3);
+        // Supply the current colour as a constant attribute.
+        glVertexAttrib4fv(3, &globals->render.color.x);
     }
 
     if(!finalNormals.empty())
@@ -561,6 +643,7 @@ void TransformFixedVerts()
     else
     {
         glDisableVertexAttribArray(2);
+        glVertexAttrib3f(2, 0.0f, 0.0f, 1.0f);
     }
 
     if(!finalTexCoords.empty())
@@ -574,10 +657,8 @@ void TransformFixedVerts()
     {
         glDisableVertexAttribArray(8);
     }
-    
-    // TODO: UBO
 
-    WRAP(glDrawArrays(drawMode, 0, finalVerts.size()));
+    glDrawArrays(drawMode, 0, (GLsizei)finalVerts.size()); // WRAP?
     glBindVertexArray(0);
 }
 
@@ -592,28 +673,41 @@ void TransposeMatrix(const float* src, float* dst)
     }
 }
 
+void MultiplyMatrix2(const float* m, const float* v, float* out)
+{
+    for(int r = 0; r < 4; ++r)
+    {
+        out[r] = m[0*4+r]*v[0] + m[1*4+r]*v[1] + m[2*4+r]*v[2] + m[3*4+r]*v[3];
+    }
+}
+
 void GetNormalMatrix(const float* mview, float* normalMat)
 {
     float m00 = mview[0], m01 = mview[4], m02 = mview[8];
     float m10 = mview[1], m11 = mview[5], m12 = mview[9];
     float m20 = mview[2], m21 = mview[6], m22 = mview[10];
 
-    float det = m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) + m02 * (m10 * m21 - m11 * m20);
+    float det = m00*(m11*m22 - m12*m21) - m01*(m10*m22 - m12*m20) + m02*(m10*m21 - m11*m20);
+    if (det == 0.0f)
+    {
+        normalMat[0]=1; normalMat[1]=0; normalMat[2]=0;
+        normalMat[3]=0; normalMat[4]=1; normalMat[5]=0;
+        normalMat[6]=0; normalMat[7]=0; normalMat[8]=1;
+        return;
+    }
+    const float inv = 1.0f / det;
 
-    if (det == 0.0f) return;
-    const float invDet = 1.0f / det;
+    normalMat[0] =  (m11*m22 - m12*m21) * inv;
+    normalMat[1] = -(m10*m22 - m12*m20) * inv;
+    normalMat[2] =  (m10*m21 - m11*m20) * inv;
 
-    normalMat[0] =  (m11 * m22 - m12 * m21) * invDet;
-    normalMat[1] = -(m10 * m22 - m12 * m20) * invDet;
-    normalMat[2] =  (m10 * m21 - m11 * m20) * invDet;
+    normalMat[3] = -(m01*m22 - m02*m21) * inv;
+    normalMat[4] =  (m00*m22 - m02*m20) * inv;
+    normalMat[5] = -(m00*m21 - m01*m20) * inv;
 
-    normalMat[3] = -(m01 * m22 - m02 * m21) * invDet;
-    normalMat[4] =  (m00 * m22 - m02 * m20) * invDet;
-    normalMat[5] = -(m00 * m21 - m01 * m20) * invDet;
-
-    normalMat[6] =  (m01 * m12 - m02 * m11) * invDet;
-    normalMat[7] = -(m00 * m12 - m02 * m10) * invDet;
-    normalMat[8] =  (m00 * m11 - m01 * m10) * invDet;
+    normalMat[6] =  (m01*m12 - m02*m11) * inv;
+    normalMat[7] = -(m00*m12 - m02*m10) * inv;
+    normalMat[8] =  (m00*m11 - m01*m10) * inv;
 }
 
 matrix3_t GetNormalMatrix(const float* mview)

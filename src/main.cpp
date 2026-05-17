@@ -137,6 +137,7 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glLightfv);
     GLIN_MAP(glLightModelf);
     GLIN_MAP(glLightModelfv);
+    GLIN_MAP(glLightModeli);
     GLIN_MAP(glMaterialf);
     GLIN_MAP(glMaterialfv);
     GLIN_MAP(glFogf);
@@ -147,6 +148,7 @@ GLINAPI void* EXPORT GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glTexEnvi);
     GLIN_MAP(glTexEnvf);
     GLIN_MAP(glTexEnvfv);
+    GLIN_MAP(glColorMaterial);
 // Shader
     GLIN_ALL(glCompileShader);
     GLIN_ALL(glCreateShader);

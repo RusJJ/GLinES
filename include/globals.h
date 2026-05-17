@@ -250,6 +250,9 @@ struct fixed_func_state_t
     float matSpecular[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     float matEmission[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     float matShininess = 0.0f;
+    
+    GLenum colorMaterialFace = GL_FRONT_AND_BACK;
+    GLenum colorMaterialMode = GL_AMBIENT_AND_DIFFUSE;
 
     GLenum fogMode = GL_EXP;
     vector4_t fogColor = {0,0,0,0};
@@ -259,6 +262,9 @@ struct fixed_func_state_t
     
     float clipPlanes[6][4] = { { 0.0f } };
     bool clipPlaneOn[6] = { false };
+    
+    bool lightModelTwoSide = false;
+    bool lightModelLocalViewer = false;
 
     GLenum shadeModel = GL_SMOOTH;
     GLint texEnvMode = GL_MODULATE;
@@ -270,6 +276,7 @@ struct render_list_t
 {
     bool begin = false;
     bool texture = false;
+    bool colorMaterial = false;
     vector4_t color = {1.0f, 1.0f, 1.0f, 1.0f};
     vector2_t texcoord = {0.0f, 0.0f};
     vector3_t normal = {0.0f, 0.0f, 1.0f};

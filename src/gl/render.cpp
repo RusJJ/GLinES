@@ -322,6 +322,18 @@ void WRAP(glLightModelfv(GLenum pname, const GLfloat* params))
     }
 }
 
+void WRAP(glLightModeli(GLenum pname, GLint param))
+{
+    if (pname == GL_LIGHT_MODEL_TWO_SIDE)
+    {
+        globals->ff.lightModelTwoSide = (param != 0);
+    }
+    else if (pname == 0x0B51) // GL_LIGHT_MODEL_LOCAL_VIEWER
+    {
+        globals->ff.lightModelLocalViewer = (param != 0);
+    }
+}
+
 void WRAP(glMaterialf(GLenum face, GLenum pname, GLfloat param))
 {
     if (pname == 0x1601) // GL_SHININESS
@@ -347,6 +359,10 @@ void WRAP(glMaterialfv(GLenum face, GLenum pname, const GLfloat *params))
     else if (pname == 0x1600) // GL_EMISSION
     {
         memcpy(globals->ff.matEmission, params, 4 * sizeof(float));
+    }
+    else if (pname == 0x1601) // GL_SHININESS
+    {
+        globals->ff.matShininess = params[0];
     }
 }
 
@@ -421,3 +437,10 @@ void WRAP(glTexEnvfv(GLenum target, GLenum pname, const GLfloat *p))
         state.texCoordColor = { p[0], p[1], p[2], p[3] };
     }
 }
+
+void WRAP(glColorMaterial(GLenum face, GLenum mode))
+{
+    globals->ff.colorMaterialFace = face;
+    globals->ff.colorMaterialMode = mode;
+}
+

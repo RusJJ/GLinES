@@ -185,6 +185,10 @@ void WRAP(glEnable(GLenum cap))
         case GL_TEXTURE_2D:
             globals->render.texture = true;
             break;
+            
+        case GL_COLOR_MATERIAL:
+            globals->render.colorMaterial = true;
+            break;
 
         default:
             glEnable(cap);
@@ -232,6 +236,10 @@ void WRAP(glDisable(GLenum cap))
             
         case GL_TEXTURE_2D:
             globals->render.texture = false;
+            break;
+            
+        case GL_COLOR_MATERIAL:
+            globals->render.colorMaterial = false;
             break;
 
         default:
