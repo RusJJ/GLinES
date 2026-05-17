@@ -44,7 +44,8 @@ enum eShaderFlags
     SF_TEXUNIT6 = (1 << 17),
     SF_TEXUNIT7 = (1 << 18),
     SF_LIGHTING = (1 << 19),
-    SF_COLOR_MAT = (1 << 20)
+    SF_COLOR_MAT = (1 << 20),
+    SF_FLATSHADING = (1 << 21)
 };
 
 struct fixed_uniform_t
@@ -204,6 +205,7 @@ inline void BuildShaderFlag()
     if(globals->client.texCoord[5].enabled) EFL(SF_TEXUNIT5);
     if(globals->client.texCoord[6].enabled) EFL(SF_TEXUNIT6);
     if(globals->client.texCoord[7].enabled) EFL(SF_TEXUNIT7);
+    if(globals->ff.shadeModel == GL_FLAT) EFL(SF_FLATSHADING);
 }
 
 std::string BuildVertexShader()
@@ -217,7 +219,14 @@ std::string BuildVertexShader()
     s += "uniform mat4 u_modelview;\n";
     s += "uniform mat4 u_proj;\n";
     s += "uniform mat3 u_normal;\n";
-    s += "out lowp vec4 v_color;\n";
+    if(FL(SF_FLATSHADING))
+    {
+        s += "flat out lowp vec4 v_color;\n";
+    }
+    else
+    {
+        s += "out lowp vec4 v_color;\n";
+    }
     s += "out vec2 v_texCoord;\n";
     s += "out vec4 v_position;\n";
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
@@ -348,7 +357,14 @@ std::string BuildFragmentShader()
 {
     // Header
     std::string s = "#version 320 es\nprecision mediump float;\n";
-    s += "in lowp vec4 v_color;\n";
+    if(FL(SF_FLATSHADING))
+    {
+        s += "flat in lowp vec4 v_color;\n";
+    }
+    else
+    {
+        s += "in lowp vec4 v_color;\n";
+    }
     s += "in vec2 v_texCoord;\n";
     s += "in vec4 v_position;\n";
     s += "uniform sampler2D u_texture;\n";
