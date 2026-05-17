@@ -136,11 +136,11 @@ struct fixed_lights_uniform_t : fixed_uniform_t
         glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
         
         id = glGetUniformBlockIndex(g_nUberShader, "u_lightBlock");
-        glUniformBlockBinding(g_nUberShader, id, 0);
+        if(id != GL_INVALID_INDEX) glUniformBlockBinding(g_nUberShader, id, 0);
     }
     inline void Apply(const fixed_light_t* v)
     {
-        if(id == -1 || !memcmp(&lights, v, sizeof(lights))) return;
+        if(ubo == 0 || !memcmp(&lights, v, sizeof(lights))) return;
  
         glBindBuffer(GL_UNIFORM_BUFFER, ubo);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(lights), v);
@@ -531,7 +531,7 @@ void UseFixedProgram()
     
     activeFixedProgram->uModelView.Apply(globals->matrix.modelview.Current());
     activeFixedProgram->uProj.Apply(globals->matrix.projection.Current());
-    if(globals->settings.matrix_transpose_invector)
+    if(!globals->settings.matrix_transpose_invector)
     {
         activeFixedProgram->uNormal.Apply(GetNormalMatrix(globals->matrix.modelview.Current().m), true);
     }
@@ -541,11 +541,32 @@ void UseFixedProgram()
     activeFixedProgram->uAmbientColor.Apply(globals->render.ambient);
     activeFixedProgram->uLights.Apply(globals->ff.lights);
     activeFixedProgram->uShininess.Apply(globals->ff.matShininess);
-    activeFixedProgram->uMatAmbient.Apply(*(const vector4_t*)globals->ff.matAmbient);
-    activeFixedProgram->uMatDiffuse.Apply(*(const vector4_t*)globals->ff.matDiffuse);
+    if(FL(SF_COLOR_MAT))
+    {
+        static const vector4_t white = {1.0f, 1.0f, 1.0f, 1.0f};
+        activeFixedProgram->uMatAmbient.Apply(white);
+        activeFixedProgram->uMatDiffuse.Apply(white);
+    }
+    else
+    {
+        activeFixedProgram->uMatAmbient.Apply(*(const vector4_t*)globals->ff.matAmbient);
+        activeFixedProgram->uMatDiffuse.Apply(*(const vector4_t*)globals->ff.matDiffuse);
+    }
     activeFixedProgram->uMatSpecular.Apply(*(const vector4_t*)globals->ff.matSpecular);
     activeFixedProgram->uMatEmission.Apply(*(const vector4_t*)globals->ff.matEmission);
     // TODO: per-unit texture uniforms (u_texColor, u_texMode, u_texId)
+    if(FL(SF_TEXUNIT1) || FL(SF_TEXUNIT2) || FL(SF_TEXUNIT3) || FL(SF_TEXUNIT4) ||
+       FL(SF_TEXUNIT5) || FL(SF_TEXUNIT6) || FL(SF_TEXUNIT7))
+    {
+        int modes[7]    = {0};
+        int samplers[7] = {1, 2, 3, 4, 5, 6, 7}; // texture units 1-7 → sampler slots 1-7
+        for(int i = 0; i < 7; ++i)
+        {
+            modes[i] = globals->client.texCoord[i + 1].texCoordBlendLogic;
+        }
+        activeFixedProgram->uTexModes.Apply(modes, 7);
+        activeFixedProgram->uTexIDs.Apply(samplers, 7);
+    }
 }
 
 void TransformFixedVerts()
@@ -561,7 +582,7 @@ void TransformFixedVerts()
         drawMode = GL_TRIANGLES;
         size_t n = globals->render.vertices.size();
         
-        for(size_t i = 0; i + 3 < n; i += 4)
+        for(size_t i = 0; i + 4 < n; i += 4)
         {
             finalVerts.push_back(globals->render.vertices[i+0]);
             finalVerts.push_back(globals->render.vertices[i+1]);
