@@ -134,14 +134,16 @@ struct fixed_lights_uniform_t : fixed_uniform_t
         glGenBuffers(1, &ubo);
         glBindBuffer(GL_UNIFORM_BUFFER, ubo);
         glBufferData(GL_UNIFORM_BUFFER, sizeof(lights), NULL, GL_DYNAMIC_DRAW);
-        glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
         
         id = glGetUniformBlockIndex(g_nUberShader, "u_lightBlock");
-        if(id != GL_INVALID_INDEX) glUniformBlockBinding(g_nUberShader, id, 0);
+        if(id != (GLint)GL_INVALID_INDEX) glUniformBlockBinding(g_nUberShader, id, 0);
     }
     inline void Apply(const fixed_light_t* v)
     {
-        if(ubo == 0 || !memcmp(&lights, v, sizeof(lights))) return;
+        if(ubo == 0) return;
+        
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
+        if(memcmp(&lights, v, sizeof(lights)) == 0) return;
  
         glBindBuffer(GL_UNIFORM_BUFFER, ubo);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(lights), v);
@@ -547,10 +549,7 @@ void UseFixedProgram()
     
     activeFixedProgram->uModelView.Apply(globals->matrix.modelview.Current());
     activeFixedProgram->uProj.Apply(globals->matrix.projection.Current());
-    if(!globals->settings.matrix_transpose_invector)
-    {
-        activeFixedProgram->uNormal.Apply(GetNormalMatrix(globals->matrix.modelview.Current().m), true);
-    }
+    activeFixedProgram->uNormal.Apply(GetNormalMatrix(globals->matrix.modelview.Current().m), true);
     activeFixedProgram->uDiffuse.Apply(0);
     activeFixedProgram->uFogColor.Apply(globals->ff.fogColor);
     activeFixedProgram->uFogValues.Apply(vector3_t{globals->ff.fogStart, globals->ff.fogEnd, globals->ff.fogDensity});
@@ -598,7 +597,7 @@ void TransformFixedVerts()
         drawMode = GL_TRIANGLES;
         size_t n = globals->render.vertices.size();
         
-        for(size_t i = 0; i + 4 < n; i += 4)
+        for(size_t i = 0; i + 4 <= n; i += 4)
         {
             finalVerts.push_back(globals->render.vertices[i+0]);
             finalVerts.push_back(globals->render.vertices[i+1]);

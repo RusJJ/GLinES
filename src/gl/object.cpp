@@ -41,9 +41,9 @@ void WRAP(glGetObjectParameterfv(GLuint obj, GLenum pname, GLfloat *params))
 
 void WRAP(glGetObjectParameteriv(GLuint obj, GLenum pname, GLint *params))
 {
-    if(pname == 0x8B82)
+    if(pname == 0x8B82) // GL_OBJECT_DELETE_STATUS_ARB
     {
-        *params = GL_TRUE;
+        *params = GL_FALSE; // Object is not flagged for deletion
         return;
     }
 
@@ -168,12 +168,13 @@ void WRAP(glBindProgram(GLenum target, GLuint program))
 
 void WRAP(glGenPrograms(GLsizei n, GLuint *programs))
 {
-    static int i; i = 0;
-    static GLuint freeId; freeId = 1;
+    int i = 0;
+    GLuint freeId = 1;
     program_arb_t* program = NULL;
     while(i < n)
     {
-        while(globals->programsARB[freeId] != NULL) ++freeId;
+        while(freeId < MAX_COUNT_OF_SAVED_ARB_PROGS && globals->programsARB[freeId] != NULL) ++freeId;
+        if(freeId >= MAX_COUNT_OF_SAVED_ARB_PROGS) break; // out of slots
         program = new program_arb_t;
         program->id = freeId;
         program->type = 0;
@@ -181,12 +182,13 @@ void WRAP(glGenPrograms(GLsizei n, GLuint *programs))
 
         programs[i] = freeId;
         ++i;
+        ++freeId;
     }
 }
 
 void WRAP(glDeletePrograms(GLsizei n, const GLuint *programs))
 {
-    static int i; i = 0;
+    int i = 0;
     program_arb_t* program;
     while(i < n)
     {

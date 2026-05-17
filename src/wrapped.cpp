@@ -123,7 +123,7 @@ void WRAP(glGetIntegerv( GLenum pname, GLint* params))
     switch(pname)
     {
         case 0x0C01: //GL_DRAW_BUFFER:
-            *params = GL_FRONT;
+            *params = (globals->gl.activeDrawBuffer != 0) ? GL_COLOR_ATTACHMENT0 : GL_BACK;
             break;
 
         case 0x84EF: //GL_TEXTURE_COMPRESSION_HINT:
@@ -136,6 +136,22 @@ void WRAP(glGetIntegerv( GLenum pname, GLint* params))
 
         case 0x864B: //GL_PROGRAM_ERROR_POSITION_ARB:
             *params = globals->arb.errorPtr;
+            break;
+
+        case 0x8B8D: //GL_CURRENT_PROGRAM:
+            *params = (GLint)globals->gl.activeProgram;
+            break;
+
+        case 0x0BA0: //GL_MATRIX_MODE:
+            *params = (GLint)globals->matrix.mode;
+            break;
+
+        case 0x84E0: //GL_ACTIVE_TEXTURE:
+            *params = (GLint)globals->gl.activeTexUnit;
+            break;
+
+        case 0x84E1: //GL_CLIENT_ACTIVE_TEXTURE:
+            *params = (GLint)(GL_TEXTURE0 + globals->client.clientActiveTextureUnit);
             break;
 
         default:
@@ -307,6 +323,54 @@ void WRAP(glGetFloatv(GLenum pname, GLfloat* data))
         case GL_TEXTURE_MATRIX:
             memcpy(data, globals->matrix.texture.Current().data(), 16 * sizeof(GLfloat));
             break;
+
+        case 0x0B00: //GL_CURRENT_COLOR:
+            data[0] = globals->render.color.x;
+            data[1] = globals->render.color.y;
+            data[2] = globals->render.color.z;
+            data[3] = globals->render.color.w;
+            break;
+
+        case 0x0B01: //GL_CURRENT_INDEX:
+            data[0] = 1.0f;
+            break;
+
+        case 0x0B02: //GL_CURRENT_NORMAL:
+            data[0] = globals->render.normal.x;
+            data[1] = globals->render.normal.y;
+            data[2] = globals->render.normal.z;
+            break;
+
+        case 0x0B03: //GL_CURRENT_TEXTURE_COORDS:
+            data[0] = globals->render.texcoord.x;
+            data[1] = globals->render.texcoord.y;
+            data[2] = 0.0f;
+            data[3] = 1.0f;
+            break;
+
+        case GL_LIGHT_MODEL_AMBIENT:
+            memcpy(data, &globals->render.ambient, 4 * sizeof(float));
+            break;
+
+        case 0x0B62: //GL_FOG_DENSITY:
+            data[0] = globals->ff.fogDensity;
+            break;
+
+        case 0x0B63: //GL_FOG_START:
+            data[0] = globals->ff.fogStart;
+            break;
+
+        case 0x0B64: //GL_FOG_END:
+            data[0] = globals->ff.fogEnd;
+            break;
+
+        case 0x0B66: //GL_FOG_COLOR:
+            memcpy(data, &globals->ff.fogColor, 4 * sizeof(float));
+            break;
+
+        case 0x1601: //GL_SHININESS:
+            data[0] = globals->ff.matShininess;
+            break;
             
         // TODO: more
     }
@@ -338,8 +402,25 @@ void WRAP(glPixelStoref(GLenum pname, GLfloat param))
 
 void WRAP(glDrawArrays(GLenum mode, GLint first, GLsizei count))
 {
-    if(globals->gl.lastPolygonMode != 0) mode = GL_LINE_STRIP;
-    
+    if(globals->gl.lastPolygonMode != 0)
+    {
+        // 1 = GL_POINT (TODO: geometry shader..?), 2 = GL_LINE
+        if(globals->gl.lastPolygonMode == 2)
+        {
+            switch(mode)
+            {
+                case GL_TRIANGLES:
+                case GL_TRIANGLE_FAN:
+                case GL_TRIANGLE_STRIP:
+                    mode = GL_LINE_STRIP;
+                    break;
+                    
+                default:
+                    mode = GL_LINE_STRIP;
+                    break;
+            }
+        }
+    }
     if(!globals->client.vertexArrayEnabled)
     {
         glDrawArrays(mode, first, count);
@@ -453,13 +534,13 @@ void WRAP(glDrawArrays(GLenum mode, GLint first, GLsizei count))
 
 void WRAP(glDrawElements(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices))
 {
-    if(globals->gl.lastPolygonMode != 0) mode = GL_LINE_STRIP;
+    if(globals->gl.lastPolygonMode == 2) mode = GL_LINE_STRIP;
     WRAPCALL(glDrawElements(mode, count, type, indices));
 }
 
 void WRAP(glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const GLvoid *indices))
 {
-    if(globals->gl.lastPolygonMode != 0) mode = GL_LINE_STRIP;
+    if(globals->gl.lastPolygonMode == 2) mode = GL_LINE_STRIP;
     WRAPCALL(glDrawRangeElements(mode, start, end, count, type, indices));
 }
 

@@ -216,6 +216,7 @@ struct client_state_t
     GLint colorSize = 4; GLenum colorType = GL_FLOAT; GLsizei colorStride = 0; GLuint colorBuffer = 0;
     GLenum normalType = GL_FLOAT; GLsizei normalStride = 0; GLuint normalBuffer = 0;
     texcoord_state_t texCoord[8];
+    GLint clientActiveTextureUnit = 0;
 };
 
 // globals.ff

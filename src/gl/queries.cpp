@@ -14,24 +14,29 @@ inline query_desc_t* FindQueryForTarget(GLenum target)
 
 void WRAP(glGenQueries(GLsizei n, GLuint * ids))
 {
-    static int i; i = 0;
-    static GLuint freeId; freeId = 1;
+    int i = 0;
+    GLuint freeId = 1;
     query_desc_t* query = NULL;
     while(i < n)
     {
-        while(globals->queries[freeId] != NULL) ++freeId;
+        while(freeId < MAX_COUNT_OF_SAVED_QUERIES && globals->queries[freeId] != NULL) ++freeId;
+        if(freeId >= MAX_COUNT_OF_SAVED_QUERIES) break; // out of slots
         query = new query_desc_t;
         query->id = freeId;
+        query->target = 0;
+        query->start = 0;
+        query->active = false;
         globals->queries[freeId] = query;
 
         ids[i] = freeId;
         ++i;
+        ++freeId;
     }
 }
 
 void WRAP(glDeleteQueries(GLsizei n, const GLuint* ids))
 {
-    static int i; i = 0;
+    int i = 0;
     query_desc_t* query;
     while(i < n)
     {

@@ -152,6 +152,8 @@ void WRAP(glDeleteTextures(GLsizei n, GLuint * textures))
 
 void WRAP(glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, GLvoid *pixels))
 {
+    if(!globals->gl.activeTexture) return;
+
     GLuint fbo;
 	GLint read_fbo = 0, draw_fbo = 0;
 
@@ -173,12 +175,73 @@ void WRAP(glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei
     if(type == 0x8367) type = GL_UNSIGNED_BYTE; //GL_UNSIGNED_INT_8_8_8_8_REV
     if(format == 0x80E0) format = GL_RGB; //GL_BGR
     else if(format == 0x80E1) format = GL_RGBA; //GL_BGRA
-    else if(format == GL_LUMINANCE || format == GL_LUMINANCE_ALPHA) internalformat = format;
+
+    if(internalformat == GL_LUMINANCE || format == GL_LUMINANCE)
+    {
+        internalformat = GL_RGBA;
+        format = GL_RGBA;
+        if(data && width > 0 && height > 0 && type == GL_UNSIGNED_BYTE)
+        {
+            int pixels = width * height;
+            unsigned char* expanded = new unsigned char[pixels * 4];
+            const unsigned char* src = (const unsigned char*)data;
+            for(int i = 0; i < pixels; ++i)
+            {
+                unsigned char l = src[i];
+                expanded[i*4+0] = l;
+                expanded[i*4+1] = l;
+                expanded[i*4+2] = l;
+                expanded[i*4+3] = 255;
+            }
+            if(globals->gl.activeTexture)
+            {
+                globals->gl.activeTexture->width = width;
+                globals->gl.activeTexture->height = height;
+                globals->gl.activeTexture->target = target;
+            }
+            glTexImage2D(target, level, internalformat, width, height, border, format, type, expanded);
+            delete[] expanded;
+            return;
+        }
+    }
+    else if(internalformat == GL_LUMINANCE_ALPHA || format == GL_LUMINANCE_ALPHA)
+    {
+        internalformat = GL_RGBA;
+        format = GL_RGBA;
+        if(data && width > 0 && height > 0 && type == GL_UNSIGNED_BYTE)
+        {
+            int pixels = width * height;
+            unsigned char* expanded = new unsigned char[pixels * 4];
+            const unsigned char* src = (const unsigned char*)data;
+            for(int i = 0; i < pixels; ++i)
+            {
+                unsigned char l = src[i*2+0];
+                unsigned char a = src[i*2+1];
+                expanded[i*4+0] = l;
+                expanded[i*4+1] = l;
+                expanded[i*4+2] = l;
+                expanded[i*4+3] = a;
+            }
+            if(globals->gl.activeTexture)
+            {
+                globals->gl.activeTexture->width = width;
+                globals->gl.activeTexture->height = height;
+                globals->gl.activeTexture->target = target;
+            }
+            glTexImage2D(target, level, internalformat, width, height, border, format, type, expanded);
+            delete[] expanded;
+            return;
+        }
+    }
+
     if(internalformat == GL_SRGB8 && format == GL_RGBA) internalformat = GL_SRGB8_ALPHA8;
 
-    globals->gl.activeTexture->width = width;
-    globals->gl.activeTexture->height = height;
-    globals->gl.activeTexture->target = target;
+    if(globals->gl.activeTexture)
+    {
+        globals->gl.activeTexture->width = width;
+        globals->gl.activeTexture->height = height;
+        globals->gl.activeTexture->target = target;
+    }
     
     glTexImage2D(target, level, internalformat, width, height, border, format, type, data);
 }
@@ -189,30 +252,46 @@ void WRAP(glTexStorage2D(GLenum target, GLsizei levels, GLenum internalformat, G
 
 	glTexStorage2D(target, levels, internalformat, width, height);
 
-	globals->gl.activeTexture->width = width;
-    globals->gl.activeTexture->height = height;
+	if(globals->gl.activeTexture)
+    {
+        globals->gl.activeTexture->width = width;
+        globals->gl.activeTexture->height = height;
+    }
 }
 
 void WRAP(glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void * pixels))
 {
     if(type == 0x8367) type = GL_UNSIGNED_BYTE; //GL_UNSIGNED_INT_8_8_8_8_REV
-
-	// TODO: recheck old code?
-    //globals->gl.activeTexture->width = width - xoffset;
-    //globals->gl.activeTexture->height = height - yoffset;
+    if(format == 0x80E0) format = GL_RGB; //GL_BGR
+    else if(format == 0x80E1) format = GL_RGBA; //GL_BGRA
 
     return glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels);
 }
 
 void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const GLvoid *data))
 {
-    if(!data || width < 1 || height < 1) return; //glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
+    if(width < 1 || height < 1) return;
+    if(!data)
+    {
+        if(globals->gl.activeTexture)
+        {
+            globals->gl.activeTexture->width = width;
+            globals->gl.activeTexture->height = height;
+            globals->gl.activeTexture->target = target;
+        }
+        glTexImage2D(target, level, GL_RGBA, width, height, border, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        return;
+    }
     if(internalformat == GL_RGBA8) internalformat = 0x83F1; //GL_COMPRESSED_RGBA_S3TC_DXT1_EXT; // GL4ES hack
 
     TestTextureExtensions();
     
-    globals->gl.activeTexture->width = width;
-    globals->gl.activeTexture->height = height;
+    if(globals->gl.activeTexture)
+    {
+        globals->gl.activeTexture->width = width;
+        globals->gl.activeTexture->height = height;
+        globals->gl.activeTexture->target = target;
+    }
 
     GLenum format = GL_RGBA;
 	GLenum intformat = GL_RGBA;
@@ -225,11 +304,16 @@ void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum internalform
         int simpleAlpha = 0;
         int complexAlpha = 0;
         bool transparent0 = (internalformat==0x83F1 || internalformat==0x8C4D)?true:false;
-        if(data) pixels = UncompressDXTn(width, height, internalformat, imageSize, transparent0, &simpleAlpha, &complexAlpha, data);
+        pixels = UncompressDXTn(width, height, internalformat, imageSize, transparent0, &simpleAlpha, &complexAlpha, data);
 		needPixelsCleanup = (pixels && pixels != data);
 			
 		if(isDXTcSRGB(internalformat)) intformat = GL_SRGB8_ALPHA8;
 	}
+    else if(globals->ext.hasDXT)
+    {
+        glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
+        return;
+    }
 	WRAP(glTexImage2D( target, level, intformat, width, height, border, format, GL_UNSIGNED_BYTE, pixels ? pixels : data ));
 
 	if(needPixelsCleanup) delete[] pixels;
@@ -260,6 +344,7 @@ void WRAP(glActiveTexture(GLenum texunit))
         glActiveTexture(texunit);
         globals->gl.activeTexUnit = texunit;
     }
+    globals->ff.activeTextureUnit = (GLint)(texunit - GL_TEXTURE0);
 }
 
 void WRAP(glBindMultiTexture(GLenum texunit, GLenum target, GLuint texture))

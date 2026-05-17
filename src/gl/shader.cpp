@@ -208,7 +208,7 @@ static const std::string strNewLine = "\n";
     { \
         /* Shader Header! */ \
         newShader += "#version 320 es\n#define attribute in\n"; \
-        if(!bIsVertexShader) newShader += "#define texture1D(s, t) texture(s, vec2(x, 0.5))\n" \
+        if(!bIsVertexShader) newShader += "#define texture1D(s, t) texture(s, vec2(t, 0.5))\n" \
         "#define texture2D texture\n#define texture3D texture\n#define textureCube texture\n#define texture2DProj textureProj\n" \
         "#define shadow2D texture\n#define texture2DLod textureLod\n"; \
         newShader += (bIsVertexShader ? "#define varying out\n" : "#define varying in\n"); \
@@ -221,12 +221,17 @@ static const std::string strNewLine = "\n";
         else if(bUsingFragColor) newShader +=  "#define gl_FragColor GLIN_FragColor\nlayout(location=0) out vec4 gl_FragColor;\n"; \
         if(bUsingClipVertex) newShader +=      "#define gl_ClipVertex GLIN_ClipVertex\nvec4 gl_ClipVertex;\n"; \
         if(bUsingC) newShader +=               "#define gl_Color GLIN_FC\n"; \
-        if(bUsingC || bUsingFC)   newShader += "#define gl_FrontColor GLIN_FC\nout vec4 GLIN_FC;\n"; \
-        if(bUsingBC)   newShader +=            "#define gl_BackColor GLIN_BC\nout vec4 GLIN_BC;\n"; \
+        if(bUsingC || bUsingFC)   newShader += (bIsVertexShader ? "#define gl_FrontColor GLIN_FC\nout vec4 GLIN_FC;\n" \
+                                                                 : "#define gl_FrontColor GLIN_FC\nin vec4 GLIN_FC;\n"); \
+        if(bUsingBC)   newShader +=            (bIsVertexShader ? "#define gl_BackColor GLIN_BC\nout vec4 GLIN_BC;\n" \
+                                                                : "#define gl_BackColor GLIN_BC\nin vec4 GLIN_BC;\n"); \
         if(bUsingSC) newShader +=              "#define gl_SecondaryColor GLIN_FSC\n"; \
-        if(bUsingSC || bUsingFSC) newShader += "#define gl_FrontSecondaryColor GLIN_FSC\nout vec4 GLIN_FSC;\n"; \
-        if(bUsingBSC) newShader +=             "#define gl_BackSecondaryColor GLIN_BSC\nout vec4 GLIN_BSC;\n"; \
-        if(bUsingFFC) newShader +=             "#define gl_FogFragCoord GLIN_FFC\nout float GLIN_FFC;\n"; \
+        if(bUsingSC || bUsingFSC) newShader += (bIsVertexShader ? "#define gl_FrontSecondaryColor GLIN_FSC\nout vec4 GLIN_FSC;\n" \
+                                                                 : "#define gl_FrontSecondaryColor GLIN_FSC\nin vec4 GLIN_FSC;\n"); \
+        if(bUsingBSC) newShader +=             (bIsVertexShader ? "#define gl_BackSecondaryColor GLIN_BSC\nout vec4 GLIN_BSC;\n" \
+                                                                : "#define gl_BackSecondaryColor GLIN_BSC\nin vec4 GLIN_BSC;\n"); \
+        if(bUsingFFC) newShader +=             (bIsVertexShader ? "#define gl_FogFragCoord GLIN_FFC\nout float GLIN_FFC;\n" \
+                                                                : "#define gl_FogFragCoord GLIN_FFC\nin float GLIN_FFC;\n"); \
         if(bUsingMultiTexCoord) newShader +=   GLES_multiTexCoordVars; \
         /* Shader Functions! */ \
         if(bUsesFTransformFn) newShader +=     GLES_ftransformFn; \
@@ -263,14 +268,23 @@ const char* ConvertShader(char* pszShaderSource, bool bIsVertexShader)
             pPossiblyUselessText = strstr(pLine, "#");
             if(pPossiblyUselessText != NULL)
             {
-                if(strstr(pPossiblyUselessText, "extension") != NULL) goto TRY_TO_CONTINUE;
+                if(strstr(pPossiblyUselessText, "#extension") != NULL)
+                {
+                    // Only skip desktop-only extensions that GLES doesn't support
+                    // Keep GL_EXT_*, GL_OES_*, GL_KHR_* which are valid on GLES
+                    bool isGLES = strstr(pPossiblyUselessText, "_EXT_") || 
+                                  strstr(pPossiblyUselessText, "_OES_") ||
+                                  strstr(pPossiblyUselessText, "_KHR_") ||
+                                  strstr(pPossiblyUselessText, "_QCOM_");
+                    if(!isGLES) goto TRY_TO_CONTINUE;
+                }
             }
             if(bUsingMultiTexCoord)
             {
-                pPossiblyUselessText = strstr(pLine, "gl_MultiTexCoord");
-                if(pPossiblyUselessText != NULL)
+                char* mtc = pLine;
+                while((mtc = strstr(mtc, "gl_MultiTexCoord")) != NULL)
                 {
-                    strcpy(pPossiblyUselessText, "        GLIN_MTC");
+                    memcpy(mtc, "        GLIN_MTC", 8);
                 }
             }
             newShader += pLine + strNewLine;

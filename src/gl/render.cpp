@@ -90,7 +90,7 @@ void WRAP(glVertex2i(GLint x, GLint y))
 
 void WRAP(glBindTexture(GLenum target, GLuint texture))
 {
-    globals->gl.activeTexture = globals->textures[texture];
+    globals->gl.activeTexture = (texture != 0) ? globals->textures[texture] : NULL;
     switch(target)
     {
         case 0x0DE0: //GL_TEXTURE_1D:
@@ -200,7 +200,7 @@ void WRAP(glEnableClientState(GLenum array))
 {
     if(array == GL_VERTEX_ARRAY) globals->client.vertexArrayEnabled = true;
     else if(array == GL_COLOR_ARRAY) globals->client.colorArrayEnabled = true;
-    else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoord[globals->ff.activeTextureUnit].enabled = true;
+    else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoord[globals->client.clientActiveTextureUnit].enabled = true;
     else if(array == GL_NORMAL_ARRAY) globals->client.normalArrayEnabled = true;
 }
 
@@ -208,7 +208,7 @@ void WRAP(glDisableClientState(GLenum array))
 {
     if(array == GL_VERTEX_ARRAY) globals->client.vertexArrayEnabled = false;
     else if(array == GL_COLOR_ARRAY) globals->client.colorArrayEnabled = false;
-    else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoord[globals->ff.activeTextureUnit].enabled = false;
+    else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoord[globals->client.clientActiveTextureUnit].enabled = false;
     else if(array == GL_NORMAL_ARRAY)
     {
         globals->client.normalArrayEnabled = false;
@@ -236,7 +236,7 @@ void WRAP(glColorPointer(GLint size, GLenum type, GLsizei stride, const void *pt
 
 void WRAP(glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const void *ptr))
 {
-    texcoord_state_t& state = globals->client.texCoord[globals->ff.activeTextureUnit];
+    texcoord_state_t& state = globals->client.texCoord[globals->client.clientActiveTextureUnit];
     state.texCoordSize = size;
     state.texCoordType = type;
     state.texCoordStride = stride;
@@ -318,7 +318,11 @@ void WRAP(glLightModelfv(GLenum pname, const GLfloat* params))
     }
     else if(pname == GL_LIGHT_MODEL_TWO_SIDE)
     {
-        
+        globals->ff.lightModelTwoSide = (params[0] != 0.0f);
+    }
+    else if(pname == 0x0B51) // GL_LIGHT_MODEL_LOCAL_VIEWER
+    {
+        globals->ff.lightModelLocalViewer = (params[0] != 0.0f);
     }
 }
 
@@ -405,7 +409,7 @@ void WRAP(glLogicOp(GLenum opcode))
 
 void WRAP(glClientActiveTexture(GLenum texture))
 {
-    globals->ff.activeTextureUnit = texture - GL_TEXTURE0;
+    globals->client.clientActiveTextureUnit = texture - GL_TEXTURE0;
 }
 
 void WRAP(glTexEnvi(GLenum target, GLenum pname, GLint param))
