@@ -8,45 +8,55 @@
 #include "gl_texture.h"
 
 #include "glhelper.h"
+#include "wrapped.h"
 
 #include <unordered_map>
 #include <string>
 
 struct fixed_program_t;
 
-unsigned int g_nFixedPipelineShaderFlags = 0;
+thread_local unsigned long long g_nFixedPipelineShaderFlags = 0;
 #define FL(x) ((g_nFixedPipelineShaderFlags & (x)) != 0)
 #define EFL(x) (g_nFixedPipelineShaderFlags |= (x))
 
-GLuint g_nUberShader = 0;
-fixed_program_t* activeFixedProgram = NULL;
+thread_local GLuint g_nUberShader = 0;
+thread_local fixed_program_t* activeFixedProgram = NULL;
 
-enum eShaderFlags
+enum eShaderFlags : unsigned long long
 {
-    NONE = 0,
-    SF_TEXTURED = (1 << 0),
-    SF_LIGHT0 = (1 << 1),
-    SF_LIGHT1 = (1 << 2),
-    SF_LIGHT2 = (1 << 3),
-    SF_LIGHT3 = (1 << 4),
-    SF_LIGHT4 = (1 << 5),
-    SF_LIGHT5 = (1 << 6),
-    SF_LIGHT6 = (1 << 7),
-    SF_LIGHT7 = (1 << 8),
-    SF_FOG_LINEAR = (1 << 9),
-    SF_FOG_EXP = (1 << 10),
-    SF_FOG_EXP2 = (1 << 11),
-    SF_TEXUNIT1 = (1 << 12),
-    SF_TEXUNIT2 = (1 << 13),
-    SF_TEXUNIT3 = (1 << 14),
-    SF_TEXUNIT4 = (1 << 15),
-    SF_TEXUNIT5 = (1 << 16),
-    SF_TEXUNIT6 = (1 << 17),
-    SF_TEXUNIT7 = (1 << 18),
-    SF_LIGHTING = (1 << 19),
-    SF_COLOR_MAT = (1 << 20),
-    SF_FLATSHADING = (1 << 21),
-    SF_AFFINE = (1 << 22)
+    NONE         = 0,
+    SF_TEXTURED  = (1ULL << 0),
+    SF_LIGHT0    = (1ULL << 1),
+    SF_LIGHT1    = (1ULL << 2),
+    SF_LIGHT2    = (1ULL << 3),
+    SF_LIGHT3    = (1ULL << 4),
+    SF_LIGHT4    = (1ULL << 5),
+    SF_LIGHT5    = (1ULL << 6),
+    SF_LIGHT6    = (1ULL << 7),
+    SF_LIGHT7    = (1ULL << 8),
+    SF_FOG_LINEAR= (1ULL << 9),
+    SF_FOG_EXP   = (1ULL << 10),
+    SF_FOG_EXP2  = (1ULL << 11),
+    SF_TEXUNIT1  = (1ULL << 12),
+    SF_TEXUNIT2  = (1ULL << 13),
+    SF_TEXUNIT3  = (1ULL << 14),
+    SF_TEXUNIT4  = (1ULL << 15),
+    SF_TEXUNIT5  = (1ULL << 16),
+    SF_TEXUNIT6  = (1ULL << 17),
+    SF_TEXUNIT7  = (1ULL << 18),
+    SF_LIGHTING  = (1ULL << 19),
+    SF_COLOR_MAT = (1ULL << 20),
+    SF_FLATSHADING=(1ULL << 21),
+    SF_AFFINE    = (1ULL << 22),
+    SF_ALPHATEST = (1ULL << 23),
+    SF_TWOSIDE   = (1ULL << 24),
+    SF_CLIPPLANE1 = (1ULL << 25),
+    SF_CLIPPLANE2 = (1ULL << 26),
+    SF_CLIPPLANE3 = (1ULL << 27),
+    SF_CLIPPLANE4 = (1ULL << 28),
+    SF_CLIPPLANE5 = (1ULL << 29),
+    SF_CLIPPLANE6 = (1ULL << 30),
+    SF_NORMALIZE = (1ULL << 31),
 };
 
 struct fixed_uniform_t
@@ -166,16 +176,24 @@ struct fixed_program_t
     fixed_uniform_t uTexCoords;
     fixed_uniform_t uTexColors;
     fixed_uniform_t uTexModes;
+    fixed_uniform_t uAlphaOnly;
     fixed_uniform_t uTexIDs;
+    fixed_uniform_t uPointSize;
+    fixed_uniform_t uTexMatrix;
+    fixed_uniform_t uTexMode0;
+    fixed_uniform_t uTexColor0;
     fixed_uniform_t uShininess;
     fixed_uniform_t uMatAmbient;
     fixed_uniform_t uMatDiffuse;
     fixed_uniform_t uMatSpecular;
     fixed_uniform_t uMatEmission;
     fixed_lights_uniform_t uLights;
+    fixed_uniform_t uAlphaRef;   // alpha test ref value
+    fixed_uniform_t uAlphaFunc;  // alpha test func (int enum)
+    fixed_uniform_t uClipPlanes; // 6 clip planes as vec4[6]
 };
 
-std::unordered_map<unsigned int, fixed_program_t*> g_mapFixedPrograms;
+#define g_mapFixedPrograms globals->fixedPrograms
 
 inline void BuildShaderFlag()
 {
@@ -194,34 +212,43 @@ inline void BuildShaderFlag()
         if(globals->ff.lightEnabled[6]) EFL(SF_LIGHT6);
         if(globals->ff.lightEnabled[7]) EFL(SF_LIGHT7);
         if(globals->render.colorMaterial) EFL(SF_COLOR_MAT);
+        if(globals->ff.lightModelTwoSide) EFL(SF_TWOSIDE);
     }
     if(globals->ff.fogEnabled)
     {
-        if(globals->ff.fogMode == GL_EXP2) EFL(SF_FOG_EXP2);
+        if(globals->ff.fogMode == GL_EXP2)   EFL(SF_FOG_EXP2);
         else if(globals->ff.fogMode == GL_LINEAR) EFL(SF_FOG_LINEAR);
         else EFL(SF_FOG_EXP);
     }
-    if(globals->client.texCoord[1].enabled) EFL(SF_TEXUNIT1);
-    if(globals->client.texCoord[2].enabled) EFL(SF_TEXUNIT2);
-    if(globals->client.texCoord[3].enabled) EFL(SF_TEXUNIT3);
-    if(globals->client.texCoord[4].enabled) EFL(SF_TEXUNIT4);
-    if(globals->client.texCoord[5].enabled) EFL(SF_TEXUNIT5);
-    if(globals->client.texCoord[6].enabled) EFL(SF_TEXUNIT6);
-    if(globals->client.texCoord[7].enabled) EFL(SF_TEXUNIT7);
+    if(globals->ff.textureEnabled[1]) EFL(SF_TEXUNIT1);
+    if(globals->ff.textureEnabled[2]) EFL(SF_TEXUNIT2);
+    if(globals->ff.textureEnabled[3]) EFL(SF_TEXUNIT3);
+    if(globals->ff.textureEnabled[4]) EFL(SF_TEXUNIT4);
+    if(globals->ff.textureEnabled[5]) EFL(SF_TEXUNIT5);
+    if(globals->ff.textureEnabled[6]) EFL(SF_TEXUNIT6);
+    if(globals->ff.textureEnabled[7]) EFL(SF_TEXUNIT7);
     if(globals->ff.shadeModel == GL_FLAT) EFL(SF_FLATSHADING);
     if(globals->ff.affineTexcoord) EFL(SF_AFFINE);
+    if(globals->ff.alphaTestEnabled) EFL(SF_ALPHATEST);
+    if(globals->ff.normalizeEnabled) EFL(SF_NORMALIZE);
+    if(globals->ff.clipPlaneOn[0]) EFL(SF_CLIPPLANE1);
+    if(globals->ff.clipPlaneOn[1]) EFL(SF_CLIPPLANE2);
+    if(globals->ff.clipPlaneOn[2]) EFL(SF_CLIPPLANE3);
+    if(globals->ff.clipPlaneOn[3]) EFL(SF_CLIPPLANE4);
+    if(globals->ff.clipPlaneOn[4]) EFL(SF_CLIPPLANE5);
+    if(globals->ff.clipPlaneOn[5]) EFL(SF_CLIPPLANE6);
 }
 
 std::string BuildVertexShader()
 {
     // Header
     std::string s = "#version 320 es\nprecision highp float;\n";
-    s += "layout(location = 0) in vec3 a_position;\n";
+    s += "layout(location = 0) in vec4 a_position;\n";
     s += "layout(location = 2) in vec3 a_normal;\n";
     s += "layout(location = 3) in vec4 a_color;\n";
     s += "layout(location = 8) in vec2 a_texCoord;\n";
     s += "uniform mat4 u_modelview;\n";
-    s += "uniform mat4 u_proj;\n";
+    s += "uniform mat4 u_proj;\nuniform mat4 u_texMatrix;\nuniform float u_pointSize;\n";
     s += "uniform mat3 u_normal;\n";
     if(FL(SF_FLATSHADING))
     {
@@ -233,13 +260,14 @@ std::string BuildVertexShader()
     }
     if(FL(SF_AFFINE))
     {
-        s += "noperspective out vec2 v_texCoord;\n";
+        s += "out vec2 v_texCoord;\n";
     }
     else
     {
         s += "out vec2 v_texCoord;\n";
     }
     s += "out vec4 v_position;\n";
+    s += "out vec4 v_eyePos;\n"; // needed for clip planes & two-side
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
     {
         s += "out float v_eyeDepth;\n";
@@ -274,12 +302,13 @@ std::string BuildVertexShader()
         s += "  vec4 diffuse;\n";
         s += "  vec4 specular;\n";
         s += "  vec4 spotDir;\n";
-        s += "  vec4 spotParams;\n";       // x=exp, y=cutoff
+        s += "  vec4 spotParams;\n";        // x=exp, y=cutoff
         s += "  vec4 attenuationParams;\n"; // x=const, y=linear, z=quad
         s += "};\n";
         s += "layout(std140) uniform u_lightBlock {\n";
         s += "  LightData light[8];\n";
         s += "};\n";
+        // Per-vertex Phong lighting function
         s += "vec4 calcLight(int i, vec3 n, vec3 vPos, vec3 vDir) {\n";
         s += "  LightData l = light[i];\n";
         s += "  float spotExp    = l.spotParams.x;\n";
@@ -314,13 +343,22 @@ std::string BuildVertexShader()
         s += "  }\n";
         s += "  return (amb + diff + spec) * att;\n";
         s += "}\n";
+        if(FL(SF_TWOSIDE))
+        {
+            // Back-face lighting with negated normal
+            s += "vec4 calcLightBack(int i, vec3 n, vec3 vPos, vec3 vDir) {\n";
+            s += "  return calcLight(i, -n, vPos, vDir);\n";
+            s += "}\n";
+            s += "flat out int v_facing;\n"; // 1=front,0=back; passed to FS
+        }
     }
     
     // Body
     s += "void main() {\n";
-    s += "  vec4 viewPos = u_modelview * vec4(a_position, 1.0);\n";
+    s += "  vec4 viewPos = u_modelview * a_position;\n";
     s += "  v_position   = u_proj * viewPos;\n";
-    s += "  gl_Position  = v_position;\n";
+    s += "  v_eyePos     = viewPos;\n";
+    s += "  gl_Position  = v_position;\n  gl_PointSize = u_pointSize;\n";
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
     {
         s += "  v_eyeDepth = -viewPos.z;\n";
@@ -335,9 +373,14 @@ std::string BuildVertexShader()
         {
             s += "  mat3 normalMatrix = u_normal;\n";
         }
-        s += "  lowp vec4 finalLight = u_ambientColor * u_matAmbient + u_matEmission;\n";
-        s += "  vec3 n = normalize(normalMatrix * a_normal);\n";
+        s += "  vec3 rawN = a_normal;\n";
+        if(FL(SF_NORMALIZE))
+        {
+            s += "  rawN = normalize(rawN);\n";
+        }
+        s += "  vec3 n = normalize(normalMatrix * rawN);\n";
         s += "  vec3 vDir = normalize(-viewPos.xyz);\n";
+        s += "  lowp vec4 finalLight = u_ambientColor * u_matAmbient + u_matEmission;\n";
         if(FL(SF_LIGHT0)) s += "  finalLight += calcLight(0, n, viewPos.xyz, vDir);\n";
         if(FL(SF_LIGHT1)) s += "  finalLight += calcLight(1, n, viewPos.xyz, vDir);\n";
         if(FL(SF_LIGHT2)) s += "  finalLight += calcLight(2, n, viewPos.xyz, vDir);\n";
@@ -347,6 +390,10 @@ std::string BuildVertexShader()
         if(FL(SF_LIGHT6)) s += "  finalLight += calcLight(6, n, viewPos.xyz, vDir);\n";
         if(FL(SF_LIGHT7)) s += "  finalLight += calcLight(7, n, viewPos.xyz, vDir);\n";
         s += "  v_color = clamp(finalLight, 0.0, 1.0) * a_color;\n";
+        if(FL(SF_TWOSIDE))
+        {
+            // TODO:
+        }
     }
     else
     {
@@ -359,7 +406,7 @@ std::string BuildVertexShader()
     if(FL(SF_TEXUNIT5)) s += "  v_texCoords[4] = a_texCoord5;\n";
     if(FL(SF_TEXUNIT6)) s += "  v_texCoords[5] = a_texCoord6;\n";
     if(FL(SF_TEXUNIT7)) s += "  v_texCoords[6] = a_texCoord7;\n";
-    s += "  v_texCoord = a_texCoord;\n";
+    s += "  v_texCoord = (u_texMatrix * vec4(a_texCoord, 0.0, 1.0)).xy;\n";
     s += "}\n";
     return s;
 }
@@ -367,7 +414,7 @@ std::string BuildVertexShader()
 std::string BuildFragmentShader()
 {
     // Header
-    std::string s = "#version 320 es\nprecision mediump float;\n";
+    std::string s = "#version 320 es\nprecision highp float;\n";
     if(FL(SF_FLATSHADING))
     {
         s += "flat in lowp vec4 v_color;\n";
@@ -378,14 +425,15 @@ std::string BuildFragmentShader()
     }
     if(FL(SF_AFFINE))
     {
-        s += "noperspective in vec2 v_texCoord;\n";
+        s += "in vec2 v_texCoord;\n";
     }
     else
     {
         s += "in vec2 v_texCoord;\n";
     }
     s += "in vec4 v_position;\n";
-    s += "uniform sampler2D u_texture;\n";
+    s += "in vec4 v_eyePos;\n";
+    s += "uniform sampler2D u_texture;\nuniform int u_texMode0;\nuniform vec4 u_texColor0;\n";
     s += "out lowp vec4 out_FragColor;\n";
     s += "lowp vec4 finalColor;\n";
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
@@ -409,6 +457,7 @@ std::string BuildFragmentShader()
         s += "  return clamp(factor, 0.0, 1.0);\n";
         s += "}\n";
     }
+    s += "uniform int u_alphaOnly[8];\n";
     if(FL(SF_TEXUNIT1) || FL(SF_TEXUNIT2) || FL(SF_TEXUNIT3) || FL(SF_TEXUNIT4) ||
         FL(SF_TEXUNIT5) || FL(SF_TEXUNIT6) || FL(SF_TEXUNIT7))
     {
@@ -416,22 +465,61 @@ std::string BuildFragmentShader()
         s += "uniform vec4 u_texColor[7];\n";
         s += "uniform int  u_texMode[7];\n";
         s += "uniform sampler2D u_texId[7];\n";
+        s += "vec4 GLIN_sampleUnit(int unit) {\n";
+        for(int i = 0; i < 7; ++i) s += "if(unit == " + std::to_string(i) + ") return texture(u_texId[" + std::to_string(i) + "], v_texCoords[" + std::to_string(i) + "]);\n";
+        s += "return vec4(1.0); }\n";
         s += "void mixUnitColor(int unit) {\n";
         s += "  int mode = u_texMode[unit];\n";
-        s += "  lowp vec4 texColor = texture(u_texId[unit], v_texCoords[unit]);\n";
-        s += "  if(mode == 0) { finalColor = texColor; return; }\n";             // GL_REPLACE
-        s += "  if(mode == 1) { finalColor *= texColor; return; }\n";            // GL_MODULATE
+        s += "  lowp vec4 texColor = GLIN_sampleUnit(unit);\n";
+        s += "  if(u_alphaOnly[unit+1] != 0) { finalColor.a = mode == 0 ? texColor.a : finalColor.a * texColor.a; return; }\n";
+        s += "  if(mode == 0) { finalColor = texColor; return; }\n";              // GL_REPLACE
+        s += "  if(mode == 1) { finalColor *= texColor; return; }\n";             // GL_MODULATE
         s += "  if(mode == 2) { finalColor = vec4(finalColor.rgb + texColor.rgb, finalColor.a * texColor.a); return; }\n"; // GL_ADD
         s += "  if(mode == 3) { finalColor = vec4(mix(finalColor.rgb, u_texColor[unit].rgb, texColor.rgb), finalColor.a * texColor.a); return; }\n"; // GL_BLEND
         s += "  if(mode == 4) { finalColor = vec4(mix(finalColor.rgb, texColor.rgb, texColor.a), finalColor.a); return; }\n"; // GL_DECAL
         s += "}\n";
     }
+    // Alpha test helper
+    if(FL(SF_ALPHATEST))
+    {
+        s += "uniform float u_alphaRef;\n";
+        s += "uniform int   u_alphaFunc;\n"; // GL enum values mapped to 0-7
+        // 0=NEVER,1=LESS,2=EQUAL,3=LEQUAL,4=GREATER,5=NOTEQUAL,6=GEQUAL,7=ALWAYS
+        s += "bool alphaTest(float a) {\n";
+        s += "  if(u_alphaFunc == 0) return false;\n"; // GL_NEVER
+        s += "  if(u_alphaFunc == 7) return true;\n";  // GL_ALWAYS
+        s += "  if(u_alphaFunc == 1) return a <  u_alphaRef;\n"; // GL_LESS
+        s += "  if(u_alphaFunc == 2) return abs(a - u_alphaRef) < 0.001;\n"; // GL_EQUAL
+        s += "  if(u_alphaFunc == 3) return a <= u_alphaRef;\n"; // GL_LEQUAL
+        s += "  if(u_alphaFunc == 4) return a >  u_alphaRef;\n"; // GL_GREATER
+        s += "  if(u_alphaFunc == 5) return abs(a - u_alphaRef) >= 0.001;\n"; // GL_NOTEQUAL
+        s += "  if(u_alphaFunc == 6) return a >= u_alphaRef;\n"; // GL_GEQUAL
+        s += "  return true;\n";
+        s += "}\n";
+    }
+    if(FL(SF_CLIPPLANE1) || FL(SF_CLIPPLANE2) || FL(SF_CLIPPLANE3) ||
+        FL(SF_CLIPPLANE4) || FL(SF_CLIPPLANE5) || FL(SF_CLIPPLANE6))
+    {
+        s += "uniform vec4 u_clipPlane[6];\n";
+    }
     
     // Body
     s += "void main() {\n";
+    if(FL(SF_CLIPPLANE1)) s += "  if(dot(v_eyePos, u_clipPlane[0]) < 0.0) discard;\n";
+    if(FL(SF_CLIPPLANE2)) s += "  if(dot(v_eyePos, u_clipPlane[1]) < 0.0) discard;\n";
+    if(FL(SF_CLIPPLANE3)) s += "  if(dot(v_eyePos, u_clipPlane[2]) < 0.0) discard;\n";
+    if(FL(SF_CLIPPLANE4)) s += "  if(dot(v_eyePos, u_clipPlane[3]) < 0.0) discard;\n";
+    if(FL(SF_CLIPPLANE5)) s += "  if(dot(v_eyePos, u_clipPlane[4]) < 0.0) discard;\n";
+    if(FL(SF_CLIPPLANE6)) s += "  if(dot(v_eyePos, u_clipPlane[5]) < 0.0) discard;\n";
     if(FL(SF_TEXTURED))
     {
-        s += "  finalColor = v_color * texture(u_texture, v_texCoord);\n";
+        s += "  vec4 tex = texture(u_texture, v_texCoord);\n";
+        s += "  finalColor = v_color * tex;\n";
+        s += "  if(u_texMode0 == 0) finalColor = tex;\n";
+        s += "  if(u_texMode0 == 2) finalColor = vec4(v_color.rgb + tex.rgb, v_color.a * tex.a);\n";
+        s += "  if(u_texMode0 == 3) finalColor = vec4(mix(v_color.rgb, u_texColor0.rgb, tex.rgb), v_color.a * tex.a);\n";
+        s += "  if(u_texMode0 == 4) finalColor = vec4(mix(v_color.rgb, tex.rgb, tex.a), v_color.a);\n";
+        s += "  if(u_alphaOnly[0] != 0) finalColor = vec4(v_color.rgb, u_texMode0 == 0 ? tex.a : v_color.a * tex.a);\n";
     }
     else
     {
@@ -447,6 +535,11 @@ std::string BuildFragmentShader()
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
     {
         s += "  finalColor.rgb = mix(u_fogColor.rgb, finalColor.rgb, getFogValue());\n";
+    }
+    // Alpha test — discard if test fails
+    if(FL(SF_ALPHATEST))
+    {
+        s += "  if(!alphaTest(finalColor.a)) discard;\n";
     }
     s += "  out_FragColor = finalColor;\n";
     s += "}\n";
@@ -514,17 +607,45 @@ unsigned int BuildFixedProgram()
     return program;
 }
 
+// Encode GL alpha-func enum to 0-7 int for the shader
+static inline int AlphaFuncToInt(GLenum f)
+{
+    switch(f)
+    {
+        case GL_NEVER:    return 0;
+        case GL_LESS:     return 1;
+        case GL_EQUAL:    return 2;
+        case GL_LEQUAL:   return 3;
+        case GL_GREATER:  return 4;
+        case GL_NOTEQUAL: return 5;
+        case GL_GEQUAL:   return 6;
+        case GL_ALWAYS:   return 7;
+        default:          return 7;
+    }
+}
+
 void UseFixedProgram()
 {
     // If the app has its own shader active, don't override it.
-    if(globals->gl.activeProgram != 0) return;
+    if(globals->gl.activeProgram != 0)
+    {
+        GLuint program = globals->gl.activeProgram;
+        glUseProgram(program);
+        matrix4_t mvp = globals->matrix.projection.Current() * globals->matrix.modelview.Current();
+        glUniformMatrix4fv(glGetUniformLocation(program, "GLIN_ModelViewProjectionMatrix"), 1, GL_FALSE, mvp.m);
+        glUniformMatrix4fv(glGetUniformLocation(program, "GLIN_ModelViewMatrix"), 1, GL_FALSE, globals->matrix.modelview.Current().m);
+        glUniformMatrix4fv(glGetUniformLocation(program, "GLIN_ProjectionMatrix"), 1, GL_FALSE, globals->matrix.projection.Current().m);
+        matrix3_t normal = GetNormalMatrix(globals->matrix.modelview.Current().m);
+        glUniformMatrix3fv(glGetUniformLocation(program, "GLIN_NormalMatrix"), 1, GL_FALSE, normal.m);
+        return;
+    }
     
     BuildShaderFlag();
     
     auto it = g_mapFixedPrograms.find(g_nFixedPipelineShaderFlags);
     if(it != g_mapFixedPrograms.end())
     {
-        activeFixedProgram = it->second;
+        activeFixedProgram = it->second.get();
         g_nUberShader = activeFixedProgram->program;
     }
     else
@@ -535,7 +656,7 @@ void UseFixedProgram()
         program->program = g_nUberShader;
         
         activeFixedProgram = program;
-        g_mapFixedPrograms.insert({ g_nFixedPipelineShaderFlags, program });
+        g_mapFixedPrograms.emplace(g_nFixedPipelineShaderFlags, std::shared_ptr<fixed_program_t>(program));
         
         program->uModelView.id    = glGetUniformLocation(g_nUberShader, "u_modelview");
         program->uProj.id         = glGetUniformLocation(g_nUberShader, "u_proj");
@@ -546,13 +667,21 @@ void UseFixedProgram()
         program->uAmbientColor.id = glGetUniformLocation(g_nUberShader, "u_ambientColor");
         program->uTexCoords.id    = glGetUniformLocation(g_nUberShader, "u_texCoords");
         program->uTexColors.id    = glGetUniformLocation(g_nUberShader, "u_texColor");
+        program->uAlphaOnly.id = glGetUniformLocation(g_nUberShader, "u_alphaOnly");
         program->uTexModes.id     = glGetUniformLocation(g_nUberShader, "u_texMode");
         program->uTexIDs.id       = glGetUniformLocation(g_nUberShader, "u_texId");
+        program->uPointSize.id = glGetUniformLocation(g_nUberShader, "u_pointSize");
+        program->uTexMatrix.id = glGetUniformLocation(g_nUberShader, "u_texMatrix");
+        program->uTexMode0.id = glGetUniformLocation(g_nUberShader, "u_texMode0");
+        program->uTexColor0.id = glGetUniformLocation(g_nUberShader, "u_texColor0");
         program->uShininess.id    = glGetUniformLocation(g_nUberShader, "u_shininess");
         program->uMatAmbient.id   = glGetUniformLocation(g_nUberShader, "u_matAmbient");
         program->uMatDiffuse.id   = glGetUniformLocation(g_nUberShader, "u_matDiffuse");
         program->uMatSpecular.id  = glGetUniformLocation(g_nUberShader, "u_matSpecular");
         program->uMatEmission.id  = glGetUniformLocation(g_nUberShader, "u_matEmission");
+        program->uAlphaRef.id     = glGetUniformLocation(g_nUberShader, "u_alphaRef");
+        program->uAlphaFunc.id    = glGetUniformLocation(g_nUberShader, "u_alphaFunc");
+        program->uClipPlanes.id   = glGetUniformLocation(g_nUberShader, "u_clipPlane");
         
         if(FL(SF_LIGHT0) || FL(SF_LIGHT1) || FL(SF_LIGHT2) || FL(SF_LIGHT3) || 
             FL(SF_LIGHT4) || FL(SF_LIGHT5) || FL(SF_LIGHT6) || FL(SF_LIGHT7))
@@ -565,8 +694,25 @@ void UseFixedProgram()
     
     activeFixedProgram->uModelView.Apply(globals->matrix.modelview.Current());
     activeFixedProgram->uProj.Apply(globals->matrix.projection.Current());
-    activeFixedProgram->uNormal.Apply(GetNormalMatrix(globals->matrix.modelview.Current().m), true);
+    activeFixedProgram->uNormal.Apply(GetNormalMatrix(globals->matrix.modelview.Current().m), false);
     activeFixedProgram->uDiffuse.Apply(0);
+    activeFixedProgram->uPointSize.Apply(globals->ff.pointSize);
+    activeFixedProgram->uTexMatrix.Apply(globals->matrix.texture.Current());
+    GLint previousUnit = 0;
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousUnit);
+    int alphaOnly[8] = {};
+    for(int i = 0; i < 8; ++i)
+    {
+        glActiveTexture(GL_TEXTURE0 + i);
+        GLint binding = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &binding);
+        auto it = globals->textures.find((GLuint)binding);
+        alphaOnly[i] = it != globals->textures.end() && it->second->baseFormat == GL_ALPHA;
+    }
+    glActiveTexture(previousUnit);
+    activeFixedProgram->uAlphaOnly.Apply(alphaOnly, 8);
+    activeFixedProgram->uTexMode0.Apply((int)globals->client.texCoord[0].texCoordBlendLogic);
+    activeFixedProgram->uTexColor0.Apply(globals->client.texCoord[0].texCoordColor);
     activeFixedProgram->uFogColor.Apply(globals->ff.fogColor);
     activeFixedProgram->uFogValues.Apply(vector3_t{globals->ff.fogStart, globals->ff.fogEnd, globals->ff.fogDensity});
     activeFixedProgram->uAmbientColor.Apply(globals->render.ambient);
@@ -585,16 +731,33 @@ void UseFixedProgram()
     }
     activeFixedProgram->uMatSpecular.Apply(*(const vector4_t*)globals->ff.matSpecular);
     activeFixedProgram->uMatEmission.Apply(*(const vector4_t*)globals->ff.matEmission);
+    // Alpha test uniforms
+    if(FL(SF_ALPHATEST))
+    {
+        activeFixedProgram->uAlphaRef.Apply(globals->ff.alphaTestRef);
+        activeFixedProgram->uAlphaFunc.Apply(AlphaFuncToInt(globals->ff.alphaTestFunc));
+    }
+    if(FL(SF_CLIPPLANE1) || FL(SF_CLIPPLANE2) || FL(SF_CLIPPLANE3) ||
+        FL(SF_CLIPPLANE4) || FL(SF_CLIPPLANE5) || FL(SF_CLIPPLANE6))
+    {
+        if(activeFixedProgram->uClipPlanes.id != -1)
+        {
+            glUniform4fv(activeFixedProgram->uClipPlanes.id, 6, (const GLfloat*)globals->ff.clipPlanes);
+        }
+    }
     // TODO: per-unit texture uniforms (u_texColor, u_texMode, u_texId)
     if(FL(SF_TEXUNIT1) || FL(SF_TEXUNIT2) || FL(SF_TEXUNIT3) || FL(SF_TEXUNIT4) ||
        FL(SF_TEXUNIT5) || FL(SF_TEXUNIT6) || FL(SF_TEXUNIT7))
     {
         int modes[7]    = {0};
-        int samplers[7] = {1, 2, 3, 4, 5, 6, 7}; // texture units 1-7 → sampler slots 1-7
+        const int samplers[7] = {1, 2, 3, 4, 5, 6, 7};
         for(int i = 0; i < 7; ++i)
         {
             modes[i] = globals->client.texCoord[i + 1].texCoordBlendLogic;
         }
+        vector4_t colors[7];
+        for(int i = 0; i < 7; ++i) colors[i] = globals->client.texCoord[i+1].texCoordColor;
+        if(activeFixedProgram->uTexColors.id != -1) glUniform4fv(activeFixedProgram->uTexColors.id, 7, &colors[0].x);
         activeFixedProgram->uTexModes.Apply(modes, 7);
         activeFixedProgram->uTexIDs.Apply(samplers, 7);
     }
@@ -602,127 +765,25 @@ void UseFixedProgram()
 
 void TransformFixedVerts()
 {
-    GLenum drawMode = globals->lastPrimitiveMode;
-    std::vector<vector3_t> finalVerts;
-    std::vector<vector4_t> finalColors;
-    std::vector<vector2_t> finalTexCoords;
-    std::vector<vector3_t> finalNormals;
-
-    if(drawMode == GL_QUADS) // GLES doesn't have GL_QUADS
-    {
-        drawMode = GL_TRIANGLES;
-        size_t n = globals->render.vertices.size();
-        
-        for(size_t i = 0; i + 4 <= n; i += 4)
-        {
-            finalVerts.push_back(globals->render.vertices[i+0]);
-            finalVerts.push_back(globals->render.vertices[i+1]);
-            finalVerts.push_back(globals->render.vertices[i+2]);
-            finalVerts.push_back(globals->render.vertices[i+0]);
-            finalVerts.push_back(globals->render.vertices[i+2]);
-            finalVerts.push_back(globals->render.vertices[i+3]);
-
-            if(!globals->render.colors.empty())
-            {
-                finalColors.push_back(globals->render.colors[i+0]);
-                finalColors.push_back(globals->render.colors[i+1]);
-                finalColors.push_back(globals->render.colors[i+2]);
-                finalColors.push_back(globals->render.colors[i+0]);
-                finalColors.push_back(globals->render.colors[i+2]);
-                finalColors.push_back(globals->render.colors[i+3]);
-            }
-            if(!globals->render.texcoords.empty())
-            {
-                finalTexCoords.push_back(globals->render.texcoords[i+0]);
-                finalTexCoords.push_back(globals->render.texcoords[i+1]);
-                finalTexCoords.push_back(globals->render.texcoords[i+2]);
-                finalTexCoords.push_back(globals->render.texcoords[i+0]);
-                finalTexCoords.push_back(globals->render.texcoords[i+2]);
-                finalTexCoords.push_back(globals->render.texcoords[i+3]);
-            }
-            if(!globals->render.normals.empty())
-            {
-                finalNormals.push_back(globals->render.normals[i+0]);
-                finalNormals.push_back(globals->render.normals[i+1]);
-                finalNormals.push_back(globals->render.normals[i+2]);
-                finalNormals.push_back(globals->render.normals[i+0]);
-                finalNormals.push_back(globals->render.normals[i+2]);
-                finalNormals.push_back(globals->render.normals[i+3]);
-            }
-        }
-    }
-    else if(drawMode == 0x0009) // GL_POLYGON -> triangle fan
-    {
-        drawMode = GL_TRIANGLE_FAN; 
-        finalVerts      = globals->render.vertices;
-        finalColors     = globals->render.colors;
-        finalTexCoords  = globals->render.texcoords;
-        finalNormals    = globals->render.normals;
-    }
-    else
-    {
-        finalVerts      = globals->render.vertices;
-        finalColors     = globals->render.colors;
-        finalTexCoords  = globals->render.texcoords;
-        finalNormals    = globals->render.normals;
-    }
-    
-    if(finalVerts.empty()) return;
-
-    GLuint* vbos = &globals->render.fixedVBO[0];
-    if(globals->render.fixedVAO == 0)
-    {
-        glGenVertexArrays(1, &globals->render.fixedVAO);
-        glGenBuffers(11, globals->render.fixedVBO);
-    }
-    glBindVertexArray(globals->render.fixedVAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
-    glBufferData(GL_ARRAY_BUFFER, finalVerts.size() * sizeof(vector3_t), finalVerts.data(), GL_STREAM_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
-
-    if(!finalColors.empty())
-    {
-        glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
-        glBufferData(GL_ARRAY_BUFFER, finalColors.size() * sizeof(vector4_t), finalColors.data(), GL_STREAM_DRAW);
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 0, NULL);
-    }
-    else
-    {
-        glDisableVertexAttribArray(3);
-        // Supply the current colour as a constant attribute.
-        glVertexAttrib4fv(3, &globals->render.color.x);
-    }
-
-    if(!finalNormals.empty())
-    {
-        glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
-        glBufferData(GL_ARRAY_BUFFER, finalNormals.size() * sizeof(vector3_t), finalNormals.data(), GL_STREAM_DRAW);
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, NULL);
-    }
-    else
-    {
-        glDisableVertexAttribArray(2);
-        glVertexAttrib3f(2, 0.0f, 0.0f, 1.0f);
-    }
-
-    if(!finalTexCoords.empty())
-    {
-        glBindBuffer(GL_ARRAY_BUFFER, vbos[3]);
-        glBufferData(GL_ARRAY_BUFFER, finalTexCoords.size() * sizeof(vector2_t), finalTexCoords.data(), GL_STREAM_DRAW);
-        glEnableVertexAttribArray(8);
-        glVertexAttribPointer(8, 2, GL_FLOAT, GL_FALSE, 0, NULL);
-    }
-    else
-    {
-        glDisableVertexAttribArray(8);
-    }
-
-    glDrawArrays(drawMode, 0, (GLsizei)finalVerts.size()); // WRAP?
-    glBindVertexArray(0);
+    if(globals->render.vertices.empty()) return;
+    client_state_t previous = globals->client;
+    auto& client = globals->client;
+    auto& render = globals->render;
+    client.vertexArrayEnabled = true;
+    client.vertexSize = 4; client.vertexType = GL_FLOAT; client.vertexStride = 0; client.vertexBuffer = 0;
+    client.vertexPtr = render.vertices.data();
+    client.colorArrayEnabled = true;
+    client.colorSize = 4; client.colorType = GL_FLOAT; client.colorStride = 0; client.colorBuffer = 0;
+    client.colorPtr = render.colors.data();
+    client.normalArrayEnabled = true;
+    client.normalType = GL_FLOAT; client.normalStride = 0; client.normalBuffer = 0;
+    client.normalPtr = render.normals.data();
+    for(auto& tex : client.texCoord) tex.enabled = false;
+    auto& tex = client.texCoord[0];
+    tex.enabled = true; tex.texCoordSize = 2; tex.texCoordType = GL_FLOAT;
+    tex.texCoordStride = 0; tex.texCoordBuffer = 0; tex.texCoordPtr = render.texcoords.data();
+    WRAP(glDrawArrays(render.lastPrimitiveMode, 0, (GLsizei)render.vertices.size()));
+    globals->client = previous;
 }
 
 void TransposeMatrix(const float* src, float* dst)

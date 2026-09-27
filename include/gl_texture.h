@@ -11,3 +11,13 @@ void WRAP(glTexImage3DMultisample(GLenum target, GLsizei samples, GLenum interna
 void WRAP(glFramebufferTexture3D(GLenum target, GLenum attachment,  GLenum textarget, GLuint texture, GLint level, GLint layer));
 void WRAP(glActiveTexture(GLenum texunit));
 void WRAP(glBindMultiTexture(GLenum texunit, GLenum target, GLuint texture));
+
+void WRAP(glTexStorage2D(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height));
+void WRAP(glBindTextureUnit(GLuint unit, GLuint texture));
+
+void WRAP(glTexParameteri(GLenum target, GLenum pname, GLint value));
+void WRAP(glTexParameterf(GLenum target, GLenum pname, GLfloat value));
+void WRAP(glTexParameteriv(GLenum target, GLenum pname, const GLint* values));
+void WRAP(glTexParameterfv(GLenum target, GLenum pname, const GLfloat* values));
+void WRAP(glGetTexParameteriv(GLenum target, GLenum pname, GLint* values));
+void WRAP(glGetTexParameterfv(GLenum target, GLenum pname, GLfloat* values));

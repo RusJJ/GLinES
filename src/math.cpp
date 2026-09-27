@@ -1,62 +1,24 @@
 //#define _USE_MATH_DEFINES
-//#include <cmath>
 extern "C" float sqrtf(float _X);
 
 void MatrixToVector(const float *a1, const float *a2, float *out) // GL4ES
 {
-#if defined(__ARM_NEON__)
-    const float* a = a1 + 8;
-    asm volatile (
-        "vld4.f32 {d0,d2,d4,d6}, [%1]            \n"
-        "vld4.f32 {d1,d3,d5,d7}, [%2]            \n"
-        "vld1.f32 {q4}, [%3]                     \n"
-        "vmul.f32 q0, q0, d8[0]                  \n"
-        "vmla.f32 q0, q1, d8[1]                  \n"
-        "vmla.f32 q0, q2, d9[0]                  \n"
-        "vmla.f32 q0, q3, d9[1]                  \n"
-        "vst1.f32 {q0}, [%0]                     \n"
-        ::"r"(out), "r"(a1), "r"(a), "r"(a2)
-        : "q0", "q1", "q2", "q3", "q4", "memory"
-    );
-#else
     out[0] = a1[0] *  a2[0] + a1[1]  * a2[1] + a1[2]  * a2[2] + a1[3]  * a2[3];
     out[1] = a1[4] *  a2[0] + a1[5]  * a2[1] + a1[6]  * a2[2] + a1[7]  * a2[3];
     out[2] = a1[8] *  a2[0] + a1[9]  * a2[1] + a1[10] * a2[2] + a1[11] * a2[3];
     out[3] = a1[12] * a2[0] + a1[13] * a2[1] + a1[14] * a2[2] + a1[15] * a2[3];
-#endif
+
 }
 
 void NormalizeVector(float *a) // GL4ES
 {
-#if defined(__ARM_NEON__)
-    asm volatile (
-        "vld1.32                {d4}, [%0]       \n"
-        "flds                   s10, [%0, #8]    \n"
-        "vsub.f32               s11, s11, s11    \n"
-
-        "vmul.f32               d0, d4, d4       \n"
-        "vpadd.f32              d0, d0           \n"
-        "vmla.f32               d0, d5, d5       \n"
-        
-        "vmov.f32               d1, d0           \n"
-        "vrsqrte.f32    		d0, d0           \n"
-        "vmul.f32               d2, d0, d1       \n"
-        "vrsqrts.f32    		d3, d2, d0       \n"  
-        "vmul.f32               d0, d0, d3       \n"
-
-        "vmul.f32               q2, q2, d0[0]    \n"
-        "vst1.32                {d4}, [%0]       \n"
-        "fsts                   s10, [%0, #8]    \n"
-        
-        :"+&r"(a): 
-        : "d0", "d1", "d2", "d3", "d4", "d5", "memory"
-    );
-#else
-    float det = 1.0f / sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+    float length = sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+    if(length == 0) return;
+    float det = 1.0f / length;
     a[0] *= det;
     a[1] *= det;
     a[2] *= det;
-#endif
+
 }
 
 void InverseMatrix(const float *m, float *r) // GL4ES
@@ -87,38 +49,6 @@ void InverseMatrix(const float *m, float *r) // GL4ES
 
 void MultiplyMatrix(const float *a, const float *b, float *c) // GL4ES
 {
-#if defined(__ARM_NEON__)
-    const float* a1 = a + 8;
-	const float* b1 = b + 8;
-    float* c1 = c + 8;
-    asm volatile (
-        "vld1.32  {d16-d19}, [%2]       \n" 
-        "vld1.32  {d20-d23}, [%3]       \n"
-        "vld1.32  {d0-d3}, [%4]         \n"
-        "vld1.32  {d4-d7}, [%5]         \n"
-        "vmul.f32 q12, q8, d0[0]        \n"
-        "vmul.f32 q13, q8, d2[0]        \n"
-        "vmul.f32 q14, q8, d4[0]        \n"
-        "vmul.f32 q15, q8, d6[0]        \n"
-        "vmla.f32 q12, q9, d0[1]        \n"
-        "vmla.f32 q13, q9, d2[1]        \n"
-        "vmla.f32 q14, q9, d4[1]        \n"
-        "vmla.f32 q15, q9, d6[1]        \n"
-        "vmla.f32 q12, q10, d1[0]       \n"
-        "vmla.f32 q13, q10, d3[0]       \n"
-        "vmla.f32 q14, q10, d5[0]       \n"
-        "vmla.f32 q15, q10, d7[0]       \n"
-        "vmla.f32 q12, q11, d1[1]       \n"
-        "vmla.f32 q13, q11, d3[1]       \n"
-        "vmla.f32 q14, q11, d5[1]       \n"
-        "vmla.f32 q15, q11, d7[1]       \n"
-        "vst1.32  {d24-d27}, [%0]       \n"
-        "vst1.32  {d28-d31}, [%1]       \n"
-    ::"r"(c), "r"(c1), "r"(a), "r"(a1), "r"(b), "r"(b1)
-    : "q0", "q1", "q2", "q3", 
-      "q8", "q9", "q10", "q11", "q12", "q13", "q14", "q15", "memory"
-        );
-#else
    float a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3],
         a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7],
         a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11],
@@ -147,5 +77,5 @@ void MultiplyMatrix(const float *a, const float *b, float *c) // GL4ES
     c[13] = b0*a01 + b1*a11 + b2*a21 + b3*a31;
     c[14] = b0*a02 + b1*a12 + b2*a22 + b3*a32;
     c[15] = b0*a03 + b1*a13 + b2*a23 + b3*a33;
-#endif
+
 }

@@ -1,215 +1,79 @@
 #include "gl_queries.h"
+#include <limits>
 
-inline query_desc_t* FindQueryForTarget(GLenum target)
-{
-    static int i;
-    query_desc_t* query;
-    for(i = 1; i < MAX_COUNT_OF_SAVED_QUERIES; ++i)
-    {
-        query = globals->queries[i];
-        if(query != NULL && query->target == target) return query;
-    }
-    return NULL;
-}
+GLINAPI void* GLIN_GetBackendProc(const char* name);
 
-void WRAP(glGenQueries(GLsizei n, GLuint * ids))
-{
-    int i = 0;
-    GLuint freeId = 1;
-    query_desc_t* query = NULL;
-    while(i < n)
-    {
-        while(freeId < MAX_COUNT_OF_SAVED_QUERIES && globals->queries[freeId] != NULL) ++freeId;
-        if(freeId >= MAX_COUNT_OF_SAVED_QUERIES) break; // out of slots
-        query = new query_desc_t;
-        query->id = freeId;
-        query->target = 0;
-        query->start = 0;
-        query->active = false;
-        globals->queries[freeId] = query;
+static bool IsTimer(GLenum target) { return target == 0x88BF || target == 0x8E28; }
 
-        ids[i] = freeId;
-        ++i;
-        ++freeId;
-    }
-}
-
-void WRAP(glDeleteQueries(GLsizei n, const GLuint* ids))
-{
-    int i = 0;
-    query_desc_t* query;
-    while(i < n)
-    {
-        if((query = globals->queries[ids[i]]) != NULL)
-        {
-            delete query;
-            globals->queries[ids[i]] = NULL;
-        }
-        ++i;
-    }
-}
-
-GLboolean WRAP(glIsQuery(GLuint id))
-{
-    return globals->queries[id] != NULL;
-}
+void WRAP(glGenQueries(GLsizei n, GLuint* ids)) { glGenQueries(n, ids); }
+void WRAP(glDeleteQueries(GLsizei n, const GLuint* ids)) { glDeleteQueries(n, ids); }
+GLboolean WRAP(glIsQuery(GLuint id)) { return glIsQuery(id); }
 
 void WRAP(glBeginQuery(GLenum target, GLuint id))
 {
-    query_desc_t* query = globals->queries[id];
-    if(query == NULL)
+    if(IsTimer(target))
     {
-        query = new query_desc_t;
-        globals->queries[id] = query;
+        auto fn = (void(*)(GLenum, GLuint))GLIN_GetBackendProc("glBeginQueryEXT");
+        if(fn) fn(target, id);
+        else SetError(GL_INVALID_ENUM);
+        return;
     }
-    else
-    {
-        if(query->active || FindQueryForTarget(target) != NULL)
-            return;
-    }
-
-    switch(target)
-    {
-        case 0x8914: //GL_SAMPLES_PASSED:
-        case 0x8C2F: //GL_ANY_SAMPLES_PASSED:
-        case 0x8D6A: //GL_ANY_SAMPLES_PASSED_CONSERVATIVE:
-        case 0x8C87: //GL_PRIMITIVES_GENERATED:
-        case 0x8C88: //GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN:
-        case 0x88BF: //GL_TIME_ELAPSED:
-            break;
-
-        default:
-            return;
-    }
-
-    query->target = target;
-    query->active = true;
-    query->start = GetClock() - globals->gl.queriesTimeOffset;
+    glBeginQuery(target, id);
 }
 
 void WRAP(glEndQuery(GLenum target))
 {
-    query_desc_t* query = FindQueryForTarget(target);
-    if(query == NULL) return;
-
-    switch(target)
+    if(IsTimer(target))
     {
-        case 0x8914: //GL_SAMPLES_PASSED:
-        case 0x8C2F: //GL_ANY_SAMPLES_PASSED:
-        case 0x8D6A: //GL_ANY_SAMPLES_PASSED_CONSERVATIVE:
-        case 0x8C87: //GL_PRIMITIVES_GENERATED:
-        case 0x8C88: //GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN:
-        case 0x88BF: //GL_TIME_ELAPSED:
-            break;
-
-        default:
-            return;
+        auto fn = (void(*)(GLenum))GLIN_GetBackendProc("glEndQueryEXT");
+        if(fn) fn(target);
+        else SetError(GL_INVALID_ENUM);
+        return;
     }
-
-    query->active = false;
-    query->start = (GetClock() - globals->gl.queriesTimeOffset) - query->start;
+    glEndQuery(target);
 }
 
 void WRAP(glQueryCounter(GLuint id, GLenum target))
 {
-    query_desc_t* query = globals->queries[id];
-    if(query == NULL || query->active) return;
-
-    query->target = target;
-    query->start = GetClock() - globals->gl.queriesTimeOffset;
+    if(target != 0x8E28) { SetError(GL_INVALID_ENUM); return; }
+    auto fn = (void(*)(GLuint, GLenum))GLIN_GetBackendProc("glQueryCounterEXT");
+    if(fn) fn(id, target);
+    else SetError(GL_INVALID_OPERATION);
 }
 
 void WRAP(glGetQueryiv(GLenum target, GLenum pname, GLint* params))
 {
-    query_desc_t* query = FindQueryForTarget(target);
-    if(query == NULL) return;
-
-    switch (pname)
+    if(IsTimer(target))
     {
-        case 0x8865: //GL_CURRENT_QUERY:
-            *params = (query->target==0x88BF) ? (GLint)query->start : 0; // GL_TIME_ELAPSED
-            break;
-        case 0x8864: //GL_QUERY_COUNTER_BITS:
-            *params = (query->target==0x88BF) ? 64 : 0;
-            break;
-
-        default:
-            break;
+        auto fn = (void(*)(GLenum, GLenum, GLint*))GLIN_GetBackendProc("glGetQueryivEXT");
+        if(fn) fn(target, pname, params);
+        else SetError(GL_INVALID_ENUM);
+        return;
     }
+    glGetQueryiv(target, pname, params);
+}
+
+void WRAP(glGetQueryObjectuiv(GLuint id, GLenum pname, GLuint* params)) { glGetQueryObjectuiv(id, pname, params); }
+
+void WRAP(glGetQueryObjectui64v(GLuint id, GLenum pname, GLuint64* params))
+{
+    auto fn = (void(*)(GLuint, GLenum, GLuint64*))GLIN_GetBackendProc("glGetQueryObjectui64vEXT");
+    if(fn) { fn(id, pname, params); return; }
+    GLuint value = 0;
+    glGetQueryObjectuiv(id, pname, &value);
+    *params = value;
 }
 
 void WRAP(glGetQueryObjectiv(GLuint id, GLenum pname, GLint* params))
 {
-    query_desc_t* query = globals->queries[id];
-    if(query == NULL) return;
-
-    switch (pname)
-    {
-        case 0x8867: //GL_QUERY_RESULT_AVAILABLE:
-            *params = GL_TRUE;
-            break;
-        case 0x9194: //GL_QUERY_RESULT_NO_WAIT:
-        case 0x8866: //GL_QUERY_RESULT:
-            *params = (query->target==0x88BF) ? (GLint)query->start : 0; // GL_TIME_ELAPSED
-            break;
-        default:
-            return;
-    }
+    GLuint value = 0;
+    glGetQueryObjectuiv(id, pname, &value);
+    *params = value > (GLuint)std::numeric_limits<GLint>::max() ? std::numeric_limits<GLint>::max() : (GLint)value;
 }
 
-void WRAP(glGetQueryObjectuiv(GLuint id, GLenum pname, GLuint* params))
+void WRAP(glGetQueryObjecti64v(GLuint id, GLenum pname, GLint64* params))
 {
-    query_desc_t* query = globals->queries[id];
-    if(query == NULL) return;
-
-    switch (pname)
-    {
-        case 0x8867: //GL_QUERY_RESULT_AVAILABLE:
-            *params = GL_TRUE;
-            break;
-        case 0x9194: //GL_QUERY_RESULT_NO_WAIT:
-        case 0x8866: //GL_QUERY_RESULT:
-            *params = (query->target==0x88BF) ? (GLuint)query->start : 0; // GL_TIME_ELAPSED
-            break;
-        default:
-            return;
-    }
-}
-
-void WRAP(glGetQueryObjecti64v(GLuint id, GLenum pname, GLint64 * params))
-{
-    query_desc_t* query = globals->queries[id];
-    if(query == NULL) return;
-
-    switch (pname)
-    {
-        case 0x8867: //GL_QUERY_RESULT_AVAILABLE:
-            *params = GL_TRUE;
-            break;
-        case 0x9194: //GL_QUERY_RESULT_NO_WAIT:
-        case 0x8866: //GL_QUERY_RESULT:
-            *params = (query->target==0x88BF) ? (GLint64)query->start : 0; // GL_TIME_ELAPSED
-            break;
-        default:
-            return;
-    }
-}
-
-void WRAP(glGetQueryObjectui64v(GLuint id, GLenum pname, GLuint64 * params))
-{
-    query_desc_t* query = globals->queries[id];
-    if(query == NULL) return;
-
-    switch (pname)
-    {
-        case 0x8867: //GL_QUERY_RESULT_AVAILABLE:
-            *params = GL_TRUE;
-            break;
-        case 0x9194: //GL_QUERY_RESULT_NO_WAIT:
-        case 0x8866: //GL_QUERY_RESULT:
-            *params = (query->target==0x88BF) ? (GLuint64)query->start : 0; // GL_TIME_ELAPSED
-            break;
-        default:
-            return;
-    }
+    GLuint64 value = 0;
+    WRAP(glGetQueryObjectui64v(id, pname, &value));
+    *params = value > (GLuint64)std::numeric_limits<GLint64>::max() ? std::numeric_limits<GLint64>::max() : (GLint64)value;
 }

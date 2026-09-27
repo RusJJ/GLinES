@@ -1,0 +1,5 @@
+#pragma once
+
+#ifndef GL_CURRENT_RASTER_POSITION
+#define GL_CURRENT_RASTER_POSITION 0x0B07
+#endif

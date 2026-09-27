@@ -1,7 +1,6 @@
 #ifndef GLINES_H
 #define GLINES_H
 
-    #define DEBUG
 
     #include "GLinES_Config.h"
     #define GL_GLEXT_PROTOTYPES
@@ -28,15 +27,20 @@
     #endif
 
 // LogCat messages
-    #include <android/log.h>
-    #ifdef DEBUG
-        #define DBG(...) __android_log_print(ANDROID_LOG_INFO, "GLinES", __VA_ARGS__)
+    #ifdef __ANDROID__
+        #include <android/log.h>
+        #define MSG(...) __android_log_print(ANDROID_LOG_INFO, "GLinES", __VA_ARGS__)
         #define ERR(...) __android_log_print(ANDROID_LOG_ERROR, "GLinES", __VA_ARGS__)
     #else
-        #define DBG(...)
-        #define ERR(...)
+        #include <cstdio>
+        #define MSG(...) do { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); } while(0)
+        #define ERR(...) MSG(__VA_ARGS__)
     #endif
-    #define MSG(...) __android_log_print(ANDROID_LOG_INFO, "GLinES", __VA_ARGS__)
+    #ifdef DEBUG
+        #define DBG(...) MSG(__VA_ARGS__)
+    #else
+        #define DBG(...) ((void)0)
+    #endif
 
 // A visibility of a function
     #ifdef STATIC_LIB
@@ -57,10 +61,12 @@
     #define STRINGIFY(a)  __STRINGIFY(a)
     #define __STRINGIFY(a)  #a
     #define WRAP(a) GLIN_Wrap_##a
-    #define WRAPCALL(a) { MSG("[WRAPCALL-Pre] glGetError() = %d, " #a, glGetError()); a; MSG("[WRAPCALL-Post] glGetError() = %d, " #a, glGetError()); MSG("[WRAPCALL] File " __FILE__ ":" STRINGIFY(__LINE__)); }
+    #define WRAPCALL(a) do { a; } while(0)
 
     extern void *(*pSetGetProcAddr)(const char* name);
 
+    typedef double GLdouble;
+    #include "desktop_enums.h"
     #include "globals.h"
 
 #endif // GLINES_H

@@ -6,7 +6,7 @@ void TransposeMatrix(const float* src, float* dst);
 void GetNormalMatrix(const float* mview, float* normalMat);
 matrix3_t GetNormalMatrix(const float* mview);
 
-extern GLuint g_nUberShader;
+extern thread_local GLuint g_nUberShader;
 
 inline int GetGLTypeSize(GLenum type)
 {
@@ -16,6 +16,8 @@ inline int GetGLTypeSize(GLenum type)
         case GL_SHORT: case GL_UNSIGNED_SHORT: return 2;
         case GL_INT: case GL_UNSIGNED_INT: case GL_FLOAT: return 4;
         case 0x140A: return 8; // GL_DOUBLE
-        default: return 4;
+        default: return 0;
     }
 }
+
+void MultiplyMatrix2(const float* matrix, const float* vector, float* output);

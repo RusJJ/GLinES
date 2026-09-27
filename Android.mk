@@ -3,11 +3,12 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := gl4es
 
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/include $(LOCAL_PATH)
 
 LOCAL_SRC_FILES := \
 	src/egl.cpp \
 	src/main.cpp \
+	src/glhelper.cpp \
 	src/math.cpp \
 	src/wrapped.cpp \
 	src/gl/buffer.cpp \
@@ -15,20 +16,12 @@ LOCAL_SRC_FILES := \
 	src/gl/object.cpp \
 	src/gl/queries.cpp \
 	src/gl/render.cpp \
+	src/gl/draw.cpp \
 	src/gl/shader.cpp \
 	src/gl/texture.cpp \
+	src/gl/uniform.cpp \
 	thirdparty/DXTn.c
 
-LOCAL_CFLAGS += -DDEBUG
-LOCAL_CFLAGS += -O2 #-ftree-vectorize -mthumb -mfpu=neon -pipe #-mfloat-abi=softfp
-LOCAL_LDLIBS := -llog
-
-ifeq ($(TARGET_ARCH_ABI), armeabi-v7a)
-	LOCAL_LDLIBS += $(LOCAL_PATH)/libGLESv3_ARM32.so
-else
-	ifeq ($(TARGET_ARCH_ABI), arm64-v8a)
-		LOCAL_LDLIBS += $(LOCAL_PATH)/libGLESv3_ARM64.so
-	endif
-endif
-
+LOCAL_CPPFLAGS := -std=c++17 -Wall -Wextra
+LOCAL_LDLIBS := -llog -ldl -lGLESv3
 include $(BUILD_SHARED_LIBRARY)

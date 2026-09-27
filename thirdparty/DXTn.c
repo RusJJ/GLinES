@@ -1,3 +1,4 @@
+#include <string.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -43,9 +44,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ---
 */
-inline uint32_t PackRGBA (uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+static uint16_t Read16(const uint8_t* p) { return (uint16_t)p[0] | ((uint16_t)p[1] << 8); }
+static uint32_t Read32(const uint8_t* p) { return (uint32_t)Read16(p) | ((uint32_t)Read16(p + 2) << 16); }
+
+static inline uint32_t PackRGBA (uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
-	return r | (g << 8) | (b << 16) | (a << 24);
+	return (uint32_t)r | ((uint32_t)g << 8) | ((uint32_t)b << 16) | ((uint32_t)a << 24);
 }
 
 static void DecompressBlockDXT1Internal (const uint8_t* block,
@@ -61,8 +65,8 @@ static void DecompressBlockDXT1Internal (const uint8_t* block,
 
 	int i, j;
 
-	color0 = *(const uint16_t*)(block);
-	color1 = *(const uint16_t*)(block + 2);
+	color0 = Read16(block);
+	color1 = Read16(block + 2);
 
 	temp = (color0 >> 11) * 255 + 16;
 	r0 = (uint8_t)((temp/32 + temp)/32);
@@ -78,9 +82,9 @@ static void DecompressBlockDXT1Internal (const uint8_t* block,
 	temp = (color1 & 0x001F) * 255 + 16;
 	b1 = (uint8_t)((temp/32 + temp)/32);
 
-	code = *(const uint32_t*)(block + 4);
+	code = Read32(block + 4);
 
-	if (color0 > color1) {
+	if (color0 > color1 || transparent0 < 0) {
 		for (j = 0; j < 4; ++j) {
 			for (i = 0; i < 4; ++i) {
 				uint32_t finalColor, positionCode;
@@ -203,11 +207,11 @@ void DecompressBlockDXT5(uint32_t x, uint32_t y, uint32_t width,
 	alpha1 = *(blockStorage + 1);
 
 	bits = blockStorage + 2;
-	alphaCode1 = bits[2] | (bits[3] << 8) | (bits[4] << 16) | (bits[5] << 24);
+	alphaCode1 = Read32(bits + 2);
 	alphaCode2 = bits[0] | (bits[1] << 8);
 
-	color0 = *(const uint16_t*)(blockStorage + 8);
-	color1 = *(const uint16_t*)(blockStorage + 10);	
+	color0 = Read16(blockStorage + 8);
+	color1 = Read16(blockStorage + 10);	
 
 	temp = (color0 >> 11) * 255 + 16;
 	r0 = (uint8_t)((temp/32 + temp)/32);
@@ -223,7 +227,7 @@ void DecompressBlockDXT5(uint32_t x, uint32_t y, uint32_t width,
 	temp = (color1 & 0x001F) * 255 + 16;
 	b1 = (uint8_t)((temp/32 + temp)/32);
 
-	code = *(const uint32_t*)(blockStorage + 12);
+	code = Read32(blockStorage + 12);
 
 	for (j = 0; j < 4; j++) {
 		for (i = 0; i < 4; i++) {
@@ -303,24 +307,17 @@ void DecompressBlockDXT3(uint32_t x, uint32_t y, uint32_t width,
 	uint8_t alphaValues [16] = { 0 };
 
 	for (i = 0; i < 4; ++i) {
-		const uint16_t* alphaData = (const uint16_t*) (blockStorage);
+		uint16_t alphaData = Read16(blockStorage);
 
-		alphaValues [i*4 + 0] = (((*alphaData) >> 0) & 0xF ) * 17;
-		alphaValues [i*4 + 1] = (((*alphaData) >> 4) & 0xF ) * 17;
-		alphaValues [i*4 + 2] = (((*alphaData) >> 8) & 0xF ) * 17;
-		alphaValues [i*4 + 3] = (((*alphaData) >> 12) & 0xF) * 17;
+		alphaValues [i*4 + 0] = ((alphaData >> 0) & 0xF ) * 17;
+		alphaValues [i*4 + 1] = ((alphaData >> 4) & 0xF ) * 17;
+		alphaValues [i*4 + 2] = ((alphaData >> 8) & 0xF ) * 17;
+		alphaValues [i*4 + 3] = ((alphaData >> 12) & 0xF) * 17;
 
 		blockStorage += 2;
 	}
 
 	DecompressBlockDXT1Internal (blockStorage,
-		image + x + (y * width), width, transparent0, simpleAlpha, complexAlpha, alphaValues);
+		image + x + (y * width), width, -1, simpleAlpha, complexAlpha, alphaValues);
 }
 
-// Texture DXT1 / DXT5 compression
-// Using STB "on file" library
-// go there https://github.com/nothings/stb
-// for more details and other libs
-
-#define STB_DXT_IMPLEMENTATION
-#include "thirdparty/nothings/stb_dxt.h"

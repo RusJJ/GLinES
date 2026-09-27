@@ -5,7 +5,7 @@ void* WRAP(glMapBuffer(GLenum target, GLenum access))
     if(access == 0x88B8) access = GL_MAP_READ_BIT;
     else if(access == 0x88B9) access = GL_MAP_WRITE_BIT;
     else if(access == 0x88BA) access = GL_MAP_READ_BIT | GL_MAP_WRITE_BIT;
-    // target == GL_QUERY_BUFFER ?
+    else { SetError(GL_INVALID_ENUM); return nullptr; }
 
     GLint size = 0;
     glGetBufferParameteriv(target, GL_BUFFER_SIZE, &size);
@@ -21,6 +21,9 @@ void WRAP(glDrawBuffer(GLenum buf))
 
 void WRAP(glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void* dst))
 {
+    if(offset < 0 || size < 0) { SetError(GL_INVALID_VALUE); return; }
+    if(!size) return;
+    if(!dst) { SetError(GL_INVALID_VALUE); return; }
     void* p = glMapBufferRange(target, offset, size, GL_MAP_READ_BIT);
     if(p == NULL) return;
     

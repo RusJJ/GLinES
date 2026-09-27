@@ -1,308 +1,223 @@
 #include "gl_shader.h"
-#include "globals.h"
-
-#include <stdlib.h>
-#include <iostream>
 #include <algorithm>
-#include <stdio.h>
+#include <cctype>
+#include <regex>
+#include <sstream>
+#include <string>
+#include <unordered_set>
+#include "shader_translate.h"
 
-static char szShaderSource[65536]; // 64kb?
+static thread_local std::string convertedSource;
 
-// Those were taken directly from GL4ES (no, they dont...)
-static const char* GLES_ftransformFn = 
-    "in highp vec4 GLIN_Vertex;\nuniform highp mat4 GLIN_MVP;\nhighp vec4 ftransform(){return GLIN_MVP*GLIN_Vertex;}\n";
+void PreprocessShader(char*, bool) {}
 
-static const char* GLES_multiTexCoordVars = 
-    "in highp vec4 GLIN_MTC0;\nin highp vec4 GLIN_MTC1;\nin highp vec4 GLIN_MTC2;\nin highp vec4 GLIN_MTC3;\n"
-    "in highp vec4 GLIN_MTC4;\nin highp vec4 GLIN_MTC5;\nin highp vec4 GLIN_MTC6;\nin highp vec4 GLIN_MTC7;\n";
+const char* ConvertShader(const char* source, bool vertex)
+{
+    std::string body, extensions;
+    std::istringstream lines(source ? source : "");
+    std::string line;
+    while(std::getline(lines, line))
+    {
+        size_t first = line.find_first_not_of(" \t\r");
+        if(first != std::string::npos && line.compare(first, 8, "#version") == 0) continue;
+        if(first != std::string::npos && line.compare(first, 10, "#extension") == 0)
+        {
+            if(line.find("GL_ARB_") == std::string::npos) extensions += line + '\n';
+            continue;
+        }
+        body += line + '\n';
+    }
+    std::unordered_set<std::string> identifiers;
+    std::string rewritten;
+    for(size_t i = 0; i < body.size();)
+    {
+        if(body.compare(i, 2, "//") == 0 || body.compare(i, 2, "/*") == 0)
+        {
+            bool block = body[i + 1] == '*';
+            size_t end = body.find(block ? "*/" : "\n", i + 2);
+            end = end == std::string::npos ? body.size() : end + (block ? 2 : 1);
+            rewritten.append(body, i, end - i);
+            i = end;
+            continue;
+        }
+        if(std::isalpha((unsigned char)body[i]) || body[i] == '_')
+        {
+            size_t end = i + 1;
+            while(end < body.size() && (std::isalnum((unsigned char)body[end]) || body[end] == '_')) ++end;
+            std::string token = body.substr(i, end - i);
+            identifiers.insert(token);
+            if(token == "attribute") token = "in";
+            else if(token == "varying") token = vertex ? "out" : "in";
+            else if(token == "texture2D" || token == "texture3D" || token == "textureCube") token = "texture";
+            else if(token == "texture2DProj") token = "textureProj";
+            else if(token == "texture2DLod" || token == "textureCubeLod") token = "textureLod";
+            else if(token == "texture2DGradARB") token = "textureGrad";
+            else if(token == "gl_Color") token = vertex ? "GLIN_Color" : "GLIN_FrontColor";
+            else if(token == "gl_FragColor") token = "GLIN_FragData[0]";
+            else if(token == "gl_FragData") token = "GLIN_FragData";
+            else if(token == "gl_Vertex" || token == "gl_Normal" || token == "gl_FrontColor" ||
+                    token == "gl_BackColor" || token == "gl_MultiTexCoord0" ||
+                    token == "gl_ModelViewProjectionMatrix" || token == "gl_ModelViewMatrix" ||
+                    token == "gl_ProjectionMatrix" || token == "gl_NormalMatrix" || token == "gl_TexCoord")
+                token = "GLIN_" + token.substr(3);
+            else if(token.compare(0, 15, "gl_MultiTexCoord") == 0) token = "GLIN_" + token.substr(3);
+            rewritten += token;
+            i = end;
+        }
+        else rewritten += body[i++];
+    }
+    auto uses = [&](const char* name) { return identifiers.count(name) != 0; };
+    convertedSource = "#version 320 es\n" + extensions + "precision highp float;\nprecision highp int;\nprecision highp sampler3D;\n";
+    const char* samplerTypes[] = {"sampler2D", "samplerCube", "sampler2DArray", "sampler2DShadow", "samplerCubeShadow",
+        "sampler2DArrayShadow", "samplerBuffer", "sampler2DMS", "sampler2DMSArray", "samplerCubeArray", "samplerCubeArrayShadow",
+        "isampler2D", "isampler3D", "isamplerCube", "isampler2DArray", "isamplerBuffer", "isampler2DMS", "isampler2DMSArray", "isamplerCubeArray",
+        "usampler2D", "usampler3D", "usamplerCube", "usampler2DArray", "usamplerBuffer", "usampler2DMS", "usampler2DMSArray", "usamplerCubeArray"};
+    for(const char* type : samplerTypes)
+        if(uses(type)) convertedSource += std::string("precision highp ") + type + ";\n";
+    if(vertex)
+    {
+        if(uses("gl_Vertex") || uses("ftransform")) convertedSource += "layout(location=0) in vec4 GLIN_Vertex;\n";
+        if(uses("gl_Normal")) convertedSource += "layout(location=2) in vec3 GLIN_Normal;\n";
+        if(uses("gl_Color")) convertedSource += "layout(location=3) in vec4 GLIN_Color;\n";
+        for(int i = 0; i < 8; ++i)
+        {
+            std::string name = "gl_MultiTexCoord" + std::to_string(i);
+            if(identifiers.count(name)) convertedSource += "layout(location=" + std::to_string(8+i) + ") in vec4 GLIN_" + name.substr(3) + ";\n";
+        }
+    }
+    if(uses("gl_ModelViewProjectionMatrix") || uses("ftransform")) convertedSource += "uniform mat4 GLIN_ModelViewProjectionMatrix;\n";
+    if(uses("gl_ModelViewMatrix")) convertedSource += "uniform mat4 GLIN_ModelViewMatrix;\n";
+    if(uses("gl_ProjectionMatrix")) convertedSource += "uniform mat4 GLIN_ProjectionMatrix;\n";
+    if(uses("gl_NormalMatrix")) convertedSource += "uniform mat3 GLIN_NormalMatrix;\n";
+    std::string qualifier = vertex ? "out " : "in ";
+    if(uses("gl_FrontColor") || (!vertex && uses("gl_Color"))) convertedSource += qualifier + "vec4 GLIN_FrontColor;\n";
+    if(uses("gl_BackColor")) convertedSource += qualifier + "vec4 GLIN_BackColor;\n";
+    if(uses("gl_TexCoord")) convertedSource += qualifier + "vec4 GLIN_TexCoord[8];\n";
+    if(uses("ftransform")) convertedSource += "vec4 ftransform() { return GLIN_ModelViewProjectionMatrix * GLIN_Vertex; }\n";
+    if(!vertex && (uses("gl_FragColor") || uses("gl_FragData")))
+    {
+        int outputs = 1;
+        std::regex output("gl_FragData\\s*\\[\\s*([0-9]+)\\s*\\]");
+        for(std::sregex_iterator it(body.begin(), body.end(), output), end; it != end; ++it)
+        {
+            unsigned long index = std::strtoul((*it)[1].str().c_str(), nullptr, 10);
+            if(index < 32) outputs = std::max(outputs, (int)index + 1);
+        }
+        convertedSource += "layout(location=0) out vec4 GLIN_FragData[" + std::to_string(outputs) + "];\n";
+    }
+    convertedSource += "#line 1\n" + shader_rewrite_t(rewritten).Run();
+    return convertedSource.c_str();
+}
 
-static const char* GLES_fragDataVar_Part1 = 
-    "#define gl_FragData GLIN_FragData\n#define gl_FragColor gl_FragData[0]\nlayout(location=0) out vec4 gl_FragData[";
+void WRAP(glShaderSource(GLuint shader, GLsizei count, const GLchar* const* strings, const GLint* lengths))
+{
+    if(count < 0) { SetError(GL_INVALID_VALUE); return; }
+    if(!glIsShader(shader)) { SetError(GL_INVALID_VALUE); return; }
+    if(count && !strings) { SetError(GL_INVALID_VALUE); return; }
+    std::string source;
+    for(GLsizei i = 0; i < count; ++i)
+    {
+        if(!strings[i]) { SetError(GL_INVALID_VALUE); return; }
+        source.append(strings[i], lengths && lengths[i] >= 0 ? (size_t)lengths[i] : strlen(strings[i]));
+    }
+    glShaderSource(shader, count, strings, lengths);
+    auto& desc = globals->shaders[shader];
+    if(!desc) { desc = new shader_desc_t; desc->shader = shader; }
+    desc->source = std::move(source);
+}
 
-static const char* GLES_min_fix = 
-    "float min(int a,float b){ return min(float(a),b); }\nfloat min(float a,int b){ return min(a,float(b)); }";
-
-static const char* GLES_max_fix = 
-    "float max(int a,float b){ return max(float(a),b); }\nfloat max(float a,int b){ return max(a,float(b)); }";
-
-static const char* GLES_clamp_fix =
-    "float clamp(float f,int a,int b) { return clamp(f,float(a),float(b)); }\n"
-    "float clamp(float f,float a,int b) { return clamp(f,a,float(b)); }\n"
-    "float clamp(float f,int a,float b) { return clamp(f,float(a),b); }\n"
-    "vec2 clamp(vec2 f,int a,int b) { return clamp(f,float(a),float(b)); }\n"
-    "vec2 clamp(vec2 f,float a,int b) { return clamp(f,a,float(b)); }\n"
-    "vec2 clamp(vec2 f,int a,float b) { return clamp(f,float(a),b); }\n"
-    "vec3 clamp(vec3 f,int a,int b) { return clamp(f,float(a),float(b)); }\n"
-    "vec3 clamp(vec3 f,float a,int b) { return clamp(f,a,float(b)); }\n"
-    "vec3 clamp(vec3 f,int a,float b) { return clamp(f,float(a),b); }\n"
-    "vec4 clamp(vec4 f,int a,int b) { return clamp(f,float(a),float(b)); }\n"
-    "vec4 clamp(vec4 f,float a,int b) { return clamp(f,a,float(b)); }\n"
-    "vec4 clamp(vec4 f,int a,float b) { return clamp(f,float(a),b); }\n";
-
-static char pszShaderLog[280];
-static char sss[256];
-static GLint shaderLen; static GLuint shaderId;
+void WRAP(glGetShaderSource(GLuint shader, GLsizei size, GLsizei* length, GLchar* output))
+{
+    auto it = globals->shaders.find(shader);
+    if(it == globals->shaders.end() || !it->second) { glGetShaderSource(shader, size, length, output); return; }
+    if(size < 0) { SetError(GL_INVALID_VALUE); return; }
+    const auto& source = it->second->source;
+    GLsizei written = size > 0 ? (GLsizei)std::min(source.size(), (size_t)size - 1) : 0;
+    if(size > 0 && output) { memcpy(output, source.data(), written); output[written] = 0; }
+    if(length) *length = written;
+}
 
 void WRAP(glCompileShader(GLuint shader))
 {
-    static GLsizei length;
-    static GLint status = 0;
-
-    bool isVertex = globals->shaders[shader]->vertexShader;
-    glGetShaderSource(shader, sizeof(szShaderSource), &length, szShaderSource);
-    PreprocessShader(szShaderSource, isVertex);
-
-    shaderId = shader;
-    const char* pNewShader = ConvertShader(szShaderSource, isVertex);
-    glShaderSource(shader, 1, (const GLchar**)&pNewShader, &shaderLen);
+    GLint type = 0, size = 0;
+    glGetShaderiv(shader, GL_SHADER_TYPE, &type);
+    glGetShaderiv(shader, GL_SHADER_SOURCE_LENGTH, &size);
+    if(size <= 0) { glCompileShader(shader); return; }
+    std::vector<char> source((size_t)size);
+    glGetShaderSource(shader, size, nullptr, source.data());
+    auto tracked = globals->shaders.find(shader);
+    if(tracked != globals->shaders.end() && tracked->second && !tracked->second->source.empty())
+    {
+        source.assign(tracked->second->source.begin(), tracked->second->source.end());
+        source.push_back(0);
+    }
+    std::string original(source.data());
+    bool native = std::regex_search(original, std::regex("#[ \\t]*version[ \\t]+[0-9]+[ \\t]+es"));
+    if(!native)
+    {
+        const char* converted = ConvertShader(source.data(), type == GL_VERTEX_SHADER);
+        glShaderSource(shader, 1, &converted, nullptr);
+    }
     glCompileShader(shader);
-    
-#ifdef GLINES_DUMP_SHADERS
-    {
-        static FILE* shaderFile;
-        sprintf(sss, "/sdcard/srceng2/shaders_org/shader_%d.txt", shader);
-        shaderFile = fopen(sss, "w+");
-        if(shaderFile) { fputs(szShaderSource, shaderFile); fclose(shaderFile); }
-
-        sprintf(sss, "/sdcard/srceng2/shaders_glin/shader_%d.txt", shader);
-        shaderFile = fopen(sss, "w+");
-        if(shaderFile) { fputs(pNewShader, shaderFile); fclose(shaderFile); }
-    }
-#endif // GLINES_DUMP_SHADERS
-
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
-    if(status == GL_FALSE)
-    {
-        glGetShaderInfoLog(shader, sizeof(pszShaderLog), &length, pszShaderLog);
-        ERR("%s shader #%d compilation error:\n%s", isVertex?"Vertex":"Fragment", shader, pszShaderLog);
-    }
 }
 
 GLuint WRAP(glCreateShader(GLenum type))
 {
-    GLuint nShader = glCreateShader(type);
-
-    auto pShader = globals->shaders[nShader];
-    if(pShader == NULL)
+    GLuint shader = glCreateShader(type);
+    if(shader)
     {
-        pShader = new shader_desc_t;
-        globals->shaders[nShader] = pShader;
+        auto& desc = globals->shaders[shader];
+        if(!desc) desc = new shader_desc_t;
+        desc->shader = shader;
+        desc->vertexShader = type == GL_VERTEX_SHADER;
     }
-    pShader->shader = nShader;
-    pShader->vertexShader = (type == GL_VERTEX_SHADER);
-
-    return nShader;
+    return shader;
 }
 
-void WRAP(glLinkProgram(GLuint program))
+void WRAP(glDeleteShader(GLuint shader))
 {
-    glLinkProgram(program);
-
-    static GLint isLinked;
-    glGetProgramiv(program, GL_LINK_STATUS, &isLinked);
-    if(isLinked == GL_FALSE)
-    {
-        ERR("[LINK] Program %d linking failed. Log:", program);
-        GLint maxLength = 0;
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
-
-        GLchar log[4096];
-        glGetProgramInfoLog( program, sizeof(log), &maxLength, log );
-        if( maxLength )
-        {
-            ERR("[LINK] %s", log);
-        }
-
-        static GLsizei count; static GLuint shaders[16] = { 0 }; static char i;
-        glGetAttachedShaders(program, sizeof(shaders), &count, shaders);
-        for(i = 0; i < count; ++i)
-        {
-            ERR("[LINK] Shader %d prog %d", shaders[i], program);
-        }
-    }
+    glDeleteShader(shader);
+    auto it = globals->shaders.find(shader);
+    if(it != globals->shaders.end()) { delete it->second; globals->shaders.erase(it); }
 }
 
-static bool bHasVersionDefinition;
-static bool bUsesFTransformFn, bUsingFragData, bUsingFragColor, bUsingMultiTexCoord, bUsingFFC, bUsingFSC, bUsingBSC, bUsingC, bUsingSC, bUsingFC, bUsingBC, bUsingClipVertex;
-static bool usesMin, usesMax, usesClamp;
-static int cMaxFragData=-1, ctemp; const char* strFragDatas;
-void PreprocessShader(char* pszShaderSource, bool bIsVertexShader)
-{
-// GLinES' things
-    if(!globals->ext.checked_exts_for_shaders)
-    {
-        globals->ext.checked_exts_for_shaders = true;
-        const char* extensions = (const char*)glGetString(GL_EXTENSIONS);
-        globals->ext.hasAlphaFuncQCOM = strstr(extensions, "GL_QCOM_alpha_test") != NULL;
-        globals->ext.hasTextureLods = strstr(extensions, "GL_EXT_shader_texture_lod") != NULL;
-    }
-// Shader's Must-have things
-    bHasVersionDefinition = strstr(pszShaderSource, "#version") != NULL;
-// Variables!
-    bUsesFTransformFn =     strstr(pszShaderSource, "ftransform(") != NULL      || strstr(pszShaderSource, "ftransform (") != NULL;
-    usesMin =               strstr(pszShaderSource, "min(") != NULL             || strstr(pszShaderSource, "min (") != NULL;
-    usesMax =               strstr(pszShaderSource, "max(") != NULL             || strstr(pszShaderSource, "max (") != NULL;
-    usesClamp =             strstr(pszShaderSource, "clamp(") != NULL           || strstr(pszShaderSource, "clamp (") != NULL;
-    bUsingFragColor =       strstr(pszShaderSource, "gl_FragColor") != NULL;
-    bUsingMultiTexCoord =   strstr(pszShaderSource, "gl_MultiTexCoord") != NULL;
-    bUsingFFC =             strstr(pszShaderSource, "gl_FogFragCoord") != NULL;
-    bUsingC =               strstr(pszShaderSource, "gl_Color") != NULL;
-    bUsingFC =              strstr(pszShaderSource, "gl_FrontColor") != NULL;
-    bUsingBC =              strstr(pszShaderSource, "gl_BackColor") != NULL;
-    bUsingSC =              strstr(pszShaderSource, "gl_SecondaryColor") != NULL;
-    bUsingFSC =             strstr(pszShaderSource, "gl_FrontSecondaryColor") != NULL;
-    bUsingBSC =             strstr(pszShaderSource, "gl_BackSecondaryColor") != NULL;
-    bUsingClipVertex =      strstr(pszShaderSource, "gl_ClipVertex") != NULL;
+void WRAP(glLinkProgram(GLuint program)) { glLinkProgram(program); }
 
-// Others
-    cMaxFragData = -1; strFragDatas = pszShaderSource;
-    bUsingFragData = false;
-    while((strFragDatas = strstr(strFragDatas + 11, "gl_FragData")) != NULL)
-    {
-        if(strFragDatas[11] == '[') ctemp = atoi(&strFragDatas[12]);
-        else ctemp = atoi(&strFragDatas[13]);
-        if(ctemp > cMaxFragData) cMaxFragData = ctemp;
-        
-        bUsingFragData = true;
-    }
-}
-
-char* ConvertARBShader(char* pszShaderSource, bool bIsVertexShader)
+char* ConvertARBShader(const char* source, bool vertex)
 {
-    const char *start = pszShaderSource;
+    const char* header = vertex ? "!!ARBvp1.0" : "!!ARBfp1.0";
+    const char* marker = source ? strstr(source, vertex ? "//GLSLvp" : "//GLSLfp") : nullptr;
+    if(!source || strncmp(source, header, 10) || !marker)
+    {
+        globals->arb.errorPtr = 0;
+        delete[] globals->arb.errorStr;
+        const char* message = "ARB assembly is unsupported; supply a GLSL payload";
+        globals->arb.errorStr = new char[strlen(message) + 1];
+        strcpy(globals->arb.errorStr, message);
+        SetError(GL_INVALID_OPERATION);
+        return nullptr;
+    }
     globals->arb.errorPtr = -1;
-
-    while(start[0] != '!' || start[1] != '!')
-    {
-        ++start;
-        if(start[0] == '\0' || start[1] == '\0')
-        {
-            globals->arb.errorPtr = 0;
-          INVALID_PROG_START:
-            if(globals->arb.errorStr != NULL) delete[] globals->arb.errorStr;
-            globals->arb.errorStr = strdup("Invalid program start");
-            return NULL;
-        }
-    }
-    if (strncmp(start, bIsVertexShader ? "!!ARBvp1.0" : "!!ARBfp1.0", 10))
-    {
-        globals->arb.errorPtr = start - pszShaderSource;
-        goto INVALID_PROG_START;
-    }
-    start += 11;
-
-    while(strncmp(start, bIsVertexShader ? "//GLSLvp" : "//GLSLfp", 8) != 0) ++start;
-
-    unsigned int len = strlen(start);
-    char* pszNewShaderSource = new char[len+1];
-    memcpy(pszNewShaderSource, start, len);
-    pszNewShaderSource[len] = 0;
-    return pszNewShaderSource;
+    char* result = new char[strlen(marker) + 1];
+    strcpy(result, marker);
+    return result;
 }
 
-static std::string newShader;
-static size_t temp;
-static const std::string strNewLine = "\n";
-
-#define FILL_SHADER_HEADER \
-    { \
-        /* Shader Header! */ \
-        newShader += "#version 320 es\n#define attribute in\n"; \
-        if(!bIsVertexShader) newShader += "#define texture1D(s, t) texture(s, vec2(t, 0.5))\n" \
-        "#define texture2D texture\n#define texture3D texture\n#define textureCube texture\n#define texture2DProj textureProj\n" \
-        "#define shadow2D texture\n#define texture2DLod textureLod\n"; \
-        newShader += (bIsVertexShader ? "#define varying out\n" : "#define varying in\n"); \
-        /* Shader Extensions! */ \
-        /* TODO: */ \
-        /* Precisions */ \
-        newShader +=                           "\nprecision highp float;\nprecision highp int;\nprecision highp sampler3D;\n\n"; \
-        /* Shader Variables! */ \
-        if(cMaxFragData > -1) { newShader +=     GLES_fragDataVar_Part1; newShader += std::to_string(++cMaxFragData); newShader += "];\n";} \
-        else if(bUsingFragColor) newShader +=  "#define gl_FragColor GLIN_FragColor\nlayout(location=0) out vec4 gl_FragColor;\n"; \
-        if(bUsingClipVertex) newShader +=      "#define gl_ClipVertex GLIN_ClipVertex\nvec4 gl_ClipVertex;\n"; \
-        if(bUsingC) newShader +=               "#define gl_Color GLIN_FC\n"; \
-        if(bUsingC || bUsingFC)   newShader += (bIsVertexShader ? "#define gl_FrontColor GLIN_FC\nout vec4 GLIN_FC;\n" \
-                                                                 : "#define gl_FrontColor GLIN_FC\nin vec4 GLIN_FC;\n"); \
-        if(bUsingBC)   newShader +=            (bIsVertexShader ? "#define gl_BackColor GLIN_BC\nout vec4 GLIN_BC;\n" \
-                                                                : "#define gl_BackColor GLIN_BC\nin vec4 GLIN_BC;\n"); \
-        if(bUsingSC) newShader +=              "#define gl_SecondaryColor GLIN_FSC\n"; \
-        if(bUsingSC || bUsingFSC) newShader += (bIsVertexShader ? "#define gl_FrontSecondaryColor GLIN_FSC\nout vec4 GLIN_FSC;\n" \
-                                                                 : "#define gl_FrontSecondaryColor GLIN_FSC\nin vec4 GLIN_FSC;\n"); \
-        if(bUsingBSC) newShader +=             (bIsVertexShader ? "#define gl_BackSecondaryColor GLIN_BSC\nout vec4 GLIN_BSC;\n" \
-                                                                : "#define gl_BackSecondaryColor GLIN_BSC\nin vec4 GLIN_BSC;\n"); \
-        if(bUsingFFC) newShader +=             (bIsVertexShader ? "#define gl_FogFragCoord GLIN_FFC\nout float GLIN_FFC;\n" \
-                                                                : "#define gl_FogFragCoord GLIN_FFC\nin float GLIN_FFC;\n"); \
-        if(bUsingMultiTexCoord) newShader +=   GLES_multiTexCoordVars; \
-        /* Shader Functions! */ \
-        if(bUsesFTransformFn) newShader +=     GLES_ftransformFn; \
-        if(usesMin) newShader +=               GLES_min_fix; \
-        if(usesMax) newShader +=               GLES_max_fix; \
-        if(usesClamp) newShader +=             GLES_clamp_fix; \
-    }
-
-const char* ConvertShader(char* pszShaderSource, bool bIsVertexShader)
+void WRAP(glGetActiveUniformName(GLuint program, GLuint index, GLsizei size, GLsizei* length, char* name))
 {
-    newShader.clear();
-    newShader = bIsVertexShader ? "// Vertex shader #" : "// Fragment shader #";
-    newShader += std::to_string(shaderId);
-    newShader += " has been generated by GLinES\n";
-    bool bFoundVersion = !bHasVersionDefinition;
-    if(bFoundVersion) FILL_SHADER_HEADER;
-    char* pLine = strtok(pszShaderSource, "\n"); char* pPossiblyUselessText = nullptr;
-    while(pLine != NULL)
-    {
-        if(!bFoundVersion)
-        {
-            if(strstr(pLine, "#version") != NULL)
-            {
-                bFoundVersion = true;
-                FILL_SHADER_HEADER;
-            }
-            else
-            {
-                newShader += pLine + strNewLine;
-            }
-        }
-        else
-        {
-            pPossiblyUselessText = strstr(pLine, "#");
-            if(pPossiblyUselessText != NULL)
-            {
-                if(strstr(pPossiblyUselessText, "#extension") != NULL)
-                {
-                    // Only skip desktop-only extensions that GLES doesn't support
-                    // Keep GL_EXT_*, GL_OES_*, GL_KHR_* which are valid on GLES
-                    bool isGLES = strstr(pPossiblyUselessText, "_EXT_") || 
-                                  strstr(pPossiblyUselessText, "_OES_") ||
-                                  strstr(pPossiblyUselessText, "_KHR_") ||
-                                  strstr(pPossiblyUselessText, "_QCOM_");
-                    if(!isGLES) goto TRY_TO_CONTINUE;
-                }
-            }
-            if(bUsingMultiTexCoord)
-            {
-                char* mtc = pLine;
-                while((mtc = strstr(mtc, "gl_MultiTexCoord")) != NULL)
-                {
-                    memcpy(mtc, "        GLIN_MTC", 8);
-                }
-            }
-            newShader += pLine + strNewLine;
-        }
-      TRY_TO_CONTINUE:
-        pLine = strtok(NULL, "\n");
-    }
-    shaderLen = newShader.length();
-    return newShader.c_str();
-}
-
-void WRAP(glGetActiveUniformName(GLuint program, GLuint uniformIndex, GLsizei bufSize, GLsizei* length, char* name))
-{
-    glGetProgramResourceName(program, GL_UNIFORM, uniformIndex, bufSize, length, name);
+    GLint components;
+    GLenum type;
+    glGetActiveUniform(program, index, size, length, &components, &type, name);
 }
 
 void WRAP(glUseProgram(GLuint program))
 {
-    globals->gl.activeProgram = program;
+    if(program)
+    {
+        GLint linked = GL_FALSE;
+        glGetProgramiv(program, GL_LINK_STATUS, &linked);
+        if(!linked) { SetError(GL_INVALID_OPERATION); return; }
+    }
     glUseProgram(program);
+    globals->gl.activeProgram = program;
 }

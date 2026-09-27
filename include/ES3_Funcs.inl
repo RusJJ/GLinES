@@ -430,6 +430,5 @@ GL_MAP(glStartTilingQCOM);
 GL_MAP(glEndTilingQCOM);
 GL_ALL(glGetString);
 GL_ALL(glGetStringi);
-GL_ALL(glGetBooleanv);
 GLIN_ALL(glGetIntegerv);
 GL_ALL(glGetInteger64v);
