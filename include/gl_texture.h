@@ -1,5 +1,7 @@
 #include "GLES.h"
 
+void WRAP(glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void* data));
+
 void WRAP(glGenTextures(GLsizei n, GLuint * textures));
 void WRAP(glDeleteTextures(GLsizei n, GLuint * textures));
 void WRAP(glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void* data));

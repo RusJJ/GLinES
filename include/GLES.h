@@ -69,4 +69,8 @@
     #include "desktop_enums.h"
     #include "globals.h"
 
+    void GLIN_InitExtensions();
+    bool GLIN_HasExtension(const char* name);
+    bool GLIN_HasCompressedFormat(GLenum format);
+
 #endif // GLINES_H

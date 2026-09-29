@@ -39,27 +39,54 @@
 const char* pszGLExtensions =
     #include "GL_Exts.inl"
 ;
-static const std::vector<std::string>& ExtensionNames()
+void GLIN_InitExtensions()
 {
-    static const std::vector<std::string> names = []() {
-        std::vector<std::string> result;
-        std::istringstream stream(pszGLExtensions);
-        std::string name;
-        while(stream >> name) result.push_back(name);
-        return result;
-    }();
-    return names;
+    auto& ext = globals->ext;
+    if(ext.checked || !glGetString(GL_VERSION)) return;
+    GLint count = 0;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &count);
+    for(GLint i = 0; i < count; ++i)
+    {
+        const char* name = (const char*)glGetStringi(GL_EXTENSIONS, i);
+        if(name) ext.nativeNames.emplace_back(name);
+    }
+    glGetIntegerv(GL_NUM_COMPRESSED_TEXTURE_FORMATS, &count);
+    ext.compressedFormats.resize(count);
+    if(count) glGetIntegerv(GL_COMPRESSED_TEXTURE_FORMATS, ext.compressedFormats.data());
+    ext.checked = true;
+    std::istringstream stream(pszGLExtensions);
+    std::string name;
+    while(stream >> name) ext.names.push_back(name);
+    for(const char* optional : {"GL_EXT_texture_filter_anisotropic", "GL_EXT_texture_sRGB_decode",
+                               "GL_EXT_color_buffer_float", "GL_EXT_color_buffer_half_float"})
+        if(GLIN_HasExtension(optional)) ext.names.emplace_back(optional);
+    for(const auto& entry : ext.names) ext.string += entry + " ";
+}
+
+bool GLIN_HasExtension(const char* name)
+{
+    GLIN_InitExtensions();
+    for(const auto& entry : globals->ext.nativeNames) if(entry == name) return true;
+    return false;
+}
+
+bool GLIN_HasCompressedFormat(GLenum format)
+{
+    GLIN_InitExtensions();
+    for(GLint entry : globals->ext.compressedFormats) if((GLenum)entry == format) return true;
+    return false;
 }
 
 const GLubyte* WRAP(glGetStringi(GLenum name, GLuint index))
 {
     if(name != GL_EXTENSIONS) { SetError(GL_INVALID_ENUM); return nullptr; }
-    const auto& names = ExtensionNames();
+    GLIN_InitExtensions();
+    const auto& names = globals->ext.names;
     if(index >= names.size()) { SetError(GL_INVALID_VALUE); return nullptr; }
     return (const GLubyte*)names[index].c_str();
 }
 
-GLint GLIN_ExtensionCount() { return (GLint)ExtensionNames().size(); }
+GLint GLIN_ExtensionCount() { GLIN_InitExtensions(); return (GLint)globals->ext.names.size(); }
 typedef void *(*getprocaddressType)(const char *);
 getprocaddressType pGetProcAddr = NULL;
 void* GLIN_Stub0(void* param, ...) // Returns 0
@@ -84,7 +111,8 @@ const GLubyte* WRAP(glGetString(GLenum name))
             return (GLubyte*)"3.30 via GLinES " GLINES_VERSION_STR;
 
         case GL_EXTENSIONS:
-            return (GLubyte*)pszGLExtensions;
+            GLIN_InitExtensions();
+            return (const GLubyte*)globals->ext.string.c_str();
 
         case 0x8874: //GL_PROGRAM_ERROR_STRING_ARB:
             return (GLubyte*)globals->arb.errorStr;
@@ -258,9 +286,9 @@ GLINAPI EXPORT void* GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glPrimitiveRestartIndex);
     GLIN_ALL(glDrawElementsInstanced);
     GLIN_ALL(glDrawElementsInstancedBaseVertex);
-    GLIN_MAP(glMultiDrawArrays);
-    GLIN_MAP(glMultiDrawElements);
-    GLIN_MAP(glMultiDrawElementsBaseVertex);
+    GLIN_ALL(glMultiDrawArrays);
+    GLIN_ALL(glMultiDrawElements);
+    GLIN_ALL(glMultiDrawElementsBaseVertex);
     GLIN_MAP(glArrayElement);
     GLIN_MAP(glInterleavedArrays);
 // -----------------------------------------------------------------------

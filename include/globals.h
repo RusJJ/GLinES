@@ -405,12 +405,16 @@ struct arbstate_t
 // globals.ext
 struct extensions_t
 {
+    bool checked = false;
+    std::vector<std::string> nativeNames;
+    std::vector<std::string> names;
+    std::vector<GLint> compressedFormats;
+    std::string string;
     bool checked_exts_for_shaders = false;
     bool checked_exts_for_textures = false;
     
     bool hasAlphaFuncQCOM = false;
     bool hasTextureLods = false;
-    bool hasDXT = false;
     bool hasClipCull = false; // GL_EXT_clip_cull_distance
 };
 

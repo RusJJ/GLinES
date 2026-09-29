@@ -133,6 +133,9 @@ static bool ConvertPixels(GLsizei width, GLsizei height, GLenum format, GLenum t
 
 static GLint InternalFormat(GLint internalformat)
 {
+    if(internalformat == 0x8C40) return GL_SRGB8;
+    if(internalformat == 0x8C42) return GL_SRGB8_ALPHA8;
+    if(internalformat >= 0x8C44 && internalformat <= 0x8C47) return GL_SRGB8_ALPHA8;
     if(internalformat == 1 || internalformat == 2 || internalformat == GL_ALPHA || internalformat == GL_LUMINANCE || internalformat == GL_LUMINANCE_ALPHA) return GL_RGBA;
     if(internalformat == 3) return GL_RGB;
     if(internalformat == 4) return GL_RGBA;
@@ -174,6 +177,7 @@ void WRAP(glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei
         if((data || store.buffer) && width && height && !ConvertPixels(width, height, format, type, data, store, converted)) return;
         store.Tight();
         if(internalformat == GL_RGB || internalformat == GL_RGBA) internalformat = GL_RGBA;
+        if(internalformat == GL_SRGB8) internalformat = GL_SRGB8_ALPHA8;
         glTexImage2D(target, level, internalformat, width, height, 0, GL_RGBA, type == 0x8367 ? GL_UNSIGNED_BYTE : type, converted.empty() ? nullptr : converted.data());
     }
     else glTexImage2D(target, level, internalformat, width, height, 0, format, type, data);
@@ -262,21 +266,36 @@ void WRAP(glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, 
     glDeleteFramebuffers(1, &fbo);
 }
 
+static bool DXTFormat(GLenum format)
+{
+    return (format >= 0x83F0 && format <= 0x83F3) || (format >= 0x8C4C && format <= 0x8C4F);
+}
+
+static GLenum DXTStorageFormat(GLenum format)
+{
+    return format >= 0x8C4C ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+}
+
 void WRAP(glTexStorage2D(GLenum target, GLsizei levels, GLenum format, GLsizei width, GLsizei height))
 {
+    if(DXTFormat(format) && !GLIN_HasCompressedFormat(format)) format = DXTStorageFormat(format);
     glTexStorage2D(TextureTarget(target), levels, format, width, height);
 }
 
-void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum format, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void* data))
+static bool DecompressDXT(GLenum format, GLsizei width, GLsizei height, GLsizei imageSize, const void* data,
+                          pixel_store_t& store, std::vector<unsigned char>& output)
 {
-    bool dxt = (format >= 0x83F0 && format <= 0x83F3) || (format >= 0x8C4C && format <= 0x8C4F);
-    if(!dxt) { glCompressedTexImage2D(TextureTarget(target), level, format, width, height, border, imageSize, data); return; }
-    if(width < 0 || height < 0 || imageSize < 0 || border || level < 0) { SetError(GL_INVALID_VALUE); return; }
     unsigned kind = format >= 0x8C4C ? format - 0x8C4C : format - 0x83F0;
     size_t blockSize = kind < 2 ? 8 : 16;
-    size_t needed = ((size_t)width + 3) / 4 * (((size_t)height + 3) / 4) * blockSize;
-    if((size_t)imageSize != needed) { SetError(GL_INVALID_VALUE); return; }
-    pixel_store_t store(false);
+    size_t blocksX = ((size_t)width + 3) / 4, blocksY = ((size_t)height + 3) / 4;
+    size_t limit = std::numeric_limits<size_t>::max();
+    if((blocksY && blocksX > limit / blockSize / blocksY) || (height && (size_t)width > limit / 4 / (size_t)height))
+    {
+        SetError(GL_INVALID_VALUE);
+        return false;
+    }
+    size_t needed = blocksX * blocksY * blockSize;
+    if((size_t)imageSize != needed) { SetError(GL_INVALID_VALUE); return false; }
     const unsigned char* source = (const unsigned char*)data;
     void* mapped = nullptr;
     if(store.buffer && needed)
@@ -284,12 +303,11 @@ void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum format, GLsi
         GLint64 size;
         glGetBufferParameteri64v(GL_PIXEL_UNPACK_BUFFER, GL_BUFFER_SIZE, &size);
         size_t offset = (size_t)data;
-        if(offset > (size_t)size || needed > (size_t)size - offset) { SetError(GL_INVALID_OPERATION); return; }
+        if(offset > (size_t)size || needed > (size_t)size - offset) { SetError(GL_INVALID_OPERATION); return false; }
         mapped = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, offset, needed, GL_MAP_READ_BIT);
-        if(!mapped) return;
+        if(!mapped) return false;
         source = (const unsigned char*)mapped;
     }
-    std::vector<unsigned char> output;
     if(source && needed)
     {
         output.resize((size_t)width * height * 4);
@@ -306,8 +324,54 @@ void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum format, GLsi
         }
     }
     if(mapped) glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+    return true;
+}
+
+void WRAP(glCompressedTexImage2D(GLenum target, GLint level, GLenum format, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void* data))
+{
+    target = TextureTarget(target);
+    if(!DXTFormat(format) || GLIN_HasCompressedFormat(format))
+    {
+        glCompressedTexImage2D(target, level, format, width, height, border, imageSize, data);
+        return;
+    }
+    if(width < 0 || height < 0 || imageSize < 0 || border || level < 0) { SetError(GL_INVALID_VALUE); return; }
+    pixel_store_t store(false);
+    std::vector<unsigned char> output;
+    if(!DecompressDXT(format, width, height, imageSize, data, store, output)) return;
     store.Tight();
-    glTexImage2D(TextureTarget(target), level, format >= 0x8C4C ? GL_SRGB8_ALPHA8 : GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, output.empty() ? nullptr : output.data());
+    glTexImage2D(target, level, DXTStorageFormat(format), width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, output.empty() ? nullptr : output.data());
+}
+
+void WRAP(glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void* data))
+{
+    target = TextureTarget(target);
+    if(!DXTFormat(format) || GLIN_HasCompressedFormat(format))
+    {
+        glCompressedTexSubImage2D(target, level, xoffset, yoffset, width, height, format, imageSize, data);
+        return;
+    }
+    if(width < 0 || height < 0 || imageSize < 0 || level < 0 || xoffset < 0 || yoffset < 0) { SetError(GL_INVALID_VALUE); return; }
+    GLint textureWidth = 0, textureHeight = 0;
+    glGetTexLevelParameteriv(target, level, GL_TEXTURE_WIDTH, &textureWidth);
+    glGetTexLevelParameteriv(target, level, GL_TEXTURE_HEIGHT, &textureHeight);
+    if(xoffset > textureWidth || width > textureWidth - xoffset || yoffset > textureHeight || height > textureHeight - yoffset)
+    {
+        SetError(GL_INVALID_VALUE);
+        return;
+    }
+    if(xoffset % 4 || yoffset % 4 || (width % 4 && xoffset + width != textureWidth) || (height % 4 && yoffset + height != textureHeight))
+    {
+        SetError(GL_INVALID_OPERATION);
+        return;
+    }
+    pixel_store_t store(false);
+    std::vector<unsigned char> output;
+    if(width && height && !data && !store.buffer) { SetError(GL_INVALID_VALUE); return; }
+    if(!DecompressDXT(format, width, height, imageSize, data, store, output)) return;
+    if(!width || !height) return;
+    store.Tight();
+    glTexSubImage2D(target, level, xoffset, yoffset, width, height, GL_RGBA, GL_UNSIGNED_BYTE, output.data());
 }
 
 void WRAP(glTexImage2DMultisample(GLenum target, GLsizei samples, GLenum format, GLsizei width, GLsizei height, GLboolean fixed))
