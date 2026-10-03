@@ -20,7 +20,7 @@ GLINAPI void WRAP(glPushMatrix())
 {
     // https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glPushMatrix.xml
     DLREC(WRAP(glPushMatrix()));
-    matrix_stack_t& stack = globals->matrix.mode == GL_PROJECTION ? globals->matrix.projection : globals->matrix.mode == GL_TEXTURE ? globals->matrix.texture : globals->matrix.modelview;
+    matrix_stack_t& stack = globals->matrix.mode == GL_PROJECTION ? globals->matrix.projection : globals->matrix.mode == GL_TEXTURE ? globals->matrix.Texture() : globals->matrix.modelview;
     if(stack.pos == MAX_COUNT_OF_MATRIX_STACK - 1) { SetError(GL_STACK_OVERFLOW); return; }
     matrix4_t& current = globals->matrix.Current();
     globals->matrix.Push();
@@ -30,7 +30,7 @@ GLINAPI void WRAP(glPushMatrix())
 GLINAPI void WRAP(glPopMatrix())
 {
     DLREC(WRAP(glPopMatrix()));
-    matrix_stack_t& stack = globals->matrix.mode == GL_PROJECTION ? globals->matrix.projection : globals->matrix.mode == GL_TEXTURE ? globals->matrix.texture : globals->matrix.modelview;
+    matrix_stack_t& stack = globals->matrix.mode == GL_PROJECTION ? globals->matrix.projection : globals->matrix.mode == GL_TEXTURE ? globals->matrix.Texture() : globals->matrix.modelview;
     if(stack.pos == 0) { SetError(GL_STACK_UNDERFLOW); return; }
     globals->matrix.Pop();
 }

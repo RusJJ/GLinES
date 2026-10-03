@@ -230,4 +230,20 @@ public:
         }
         return output;
     }
+
+    bool HasOutputIndex() const
+    {
+        for(size_t i = 0; i + 1 < tokens.size(); ++i)
+        {
+            if(tokens[i].text != "layout" || tokens[i+1].text != "(") continue;
+            int depth = 1;
+            for(size_t j = i + 2; j + 1 < tokens.size() && depth; ++j)
+            {
+                if(tokens[j].text == "(") ++depth;
+                else if(tokens[j].text == ")") --depth;
+                else if(depth == 1 && tokens[j].text == "index" && tokens[j+1].text == "=") return true;
+            }
+        }
+        return false;
+    }
 };

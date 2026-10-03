@@ -57,6 +57,9 @@ enum eShaderFlags : unsigned long long
     SF_CLIPPLANE5 = (1ULL << 29),
     SF_CLIPPLANE6 = (1ULL << 30),
     SF_NORMALIZE = (1ULL << 31),
+    SF_MATERIAL_ARRAY = (1ULL << 32),
+    SF_CLAMP_VERTEX = (1ULL << 33),
+    SF_CLAMP_FRAGMENT = (1ULL << 34),
 };
 
 struct fixed_uniform_t
@@ -179,14 +182,21 @@ struct fixed_program_t
     fixed_uniform_t uAlphaOnly;
     fixed_uniform_t uTexIDs;
     fixed_uniform_t uPointSize;
+    fixed_uniform_t uPointLimits;
+    fixed_uniform_t uPointAttenuation;
+    fixed_uniform_t uPointSprite;
+    fixed_uniform_t uObjectPlanes;
+    fixed_uniform_t uEyePlanes;
     fixed_uniform_t uTexMatrix;
     fixed_uniform_t uTexMode0;
     fixed_uniform_t uTexColor0;
-    fixed_uniform_t uShininess;
-    fixed_uniform_t uMatAmbient;
-    fixed_uniform_t uMatDiffuse;
-    fixed_uniform_t uMatSpecular;
-    fixed_uniform_t uMatEmission;
+    fixed_uniform_t uShininess[2];
+    fixed_uniform_t uMatAmbient[2];
+    fixed_uniform_t uMatDiffuse[2];
+    fixed_uniform_t uMatSpecular[2];
+    fixed_uniform_t uMatEmission[2];
+    fixed_uniform_t uMaterialWidth;
+    fixed_uniform_t uMaterialValues;
     fixed_lights_uniform_t uLights;
     fixed_uniform_t uAlphaRef;   // alpha test ref value
     fixed_uniform_t uAlphaFunc;  // alpha test func (int enum)
@@ -195,14 +205,38 @@ struct fixed_program_t
 
 #define g_mapFixedPrograms globals->fixedPrograms
 
+static bool FixedColorBuffers()
+{
+    GLint count, framebuffer;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
+    glGetIntegerv(GL_MAX_DRAW_BUFFERS, &count);
+    for(int i = 0; i < (framebuffer ? count : 1); ++i)
+    {
+        GLint buffer, type;
+        glGetIntegerv(GL_DRAW_BUFFER0 + i, &buffer);
+        if(buffer == GL_NONE) continue;
+        glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER, buffer, GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE, &type);
+        if(type != GL_UNSIGNED_NORMALIZED && type != GL_SIGNED_NORMALIZED) return false;
+    }
+    return true;
+}
+
+bool FragmentColorClamped()
+{
+    return globals->ff.clampFragmentColor == GL_TRUE || (globals->ff.clampFragmentColor == 0x891D && FixedColorBuffers());
+}
+
 inline void BuildShaderFlag()
 {
     g_nFixedPipelineShaderFlags = 0;
+    if(globals->ff.clampVertexColor == GL_TRUE || (globals->ff.clampVertexColor == 0x891D && FixedColorBuffers())) EFL(SF_CLAMP_VERTEX);
+    if(FragmentColorClamped()) EFL(SF_CLAMP_FRAGMENT);
     
     if(globals->render.texture) EFL(SF_TEXTURED);
     if(globals->ff.lightingEnabled)
     {
         EFL(SF_LIGHTING);
+        if(globals->render.materialWidth) EFL(SF_MATERIAL_ARRAY);
         if(globals->ff.lightEnabled[0]) EFL(SF_LIGHT0);
         if(globals->ff.lightEnabled[1]) EFL(SF_LIGHT1);
         if(globals->ff.lightEnabled[2]) EFL(SF_LIGHT2);
@@ -242,13 +276,21 @@ inline void BuildShaderFlag()
 std::string BuildVertexShader()
 {
     // Header
-    std::string s = "#version 320 es\nprecision highp float;\n";
+    std::string s = "#version 300 es\nprecision highp float;\n";
     s += "layout(location = 0) in vec4 a_position;\n";
     s += "layout(location = 2) in vec3 a_normal;\n";
     s += "layout(location = 3) in vec4 a_color;\n";
-    s += "layout(location = 8) in vec2 a_texCoord;\n";
+    s += "layout(location = 4) in vec3 a_secondaryColor;\nlayout(location = 5) in float a_fogCoord;\n";
+    s += FL(SF_FLATSHADING) ? "flat out vec3 v_secondaryColor;\n" : "out vec3 v_secondaryColor;\n";
+    if(FL(SF_TWOSIDE))
+    {
+        s += FL(SF_FLATSHADING) ? "flat out lowp vec4 v_backColor;\nflat out vec3 v_backSecondaryColor;\n" : "out lowp vec4 v_backColor;\nout vec3 v_backSecondaryColor;\n";
+    }
+    s += "layout(location = 8) in vec4 a_texCoord;\n";
     s += "uniform mat4 u_modelview;\n";
-    s += "uniform mat4 u_proj;\nuniform mat4 u_texMatrix;\nuniform float u_pointSize;\n";
+    s += "uniform mat4 u_proj;\nuniform mat4 u_texMatrix[8];\nuniform float u_pointSize;\n";
+    s += "uniform vec2 u_pointLimits;\nuniform vec3 u_pointAttenuation;\n";
+    s += "uniform vec4 u_objectPlanes[32];\nuniform vec4 u_eyePlanes[32];\n";
     s += "uniform mat3 u_normal;\n";
     if(FL(SF_FLATSHADING))
     {
@@ -260,11 +302,11 @@ std::string BuildVertexShader()
     }
     if(FL(SF_AFFINE))
     {
-        s += "out vec2 v_texCoord;\n";
+        s += "out vec4 v_texCoord;\n";
     }
     else
     {
-        s += "out vec2 v_texCoord;\n";
+        s += "out vec4 v_texCoord;\n";
     }
     s += "out vec4 v_position;\n";
     s += "out vec4 v_eyePos;\n"; // needed for clip planes & two-side
@@ -275,23 +317,31 @@ std::string BuildVertexShader()
     if(FL(SF_TEXUNIT1) || FL(SF_TEXUNIT2) || FL(SF_TEXUNIT3) || FL(SF_TEXUNIT4) ||
         FL(SF_TEXUNIT5) || FL(SF_TEXUNIT6) || FL(SF_TEXUNIT7))
     {
-        s += "layout(location = 9)  in vec2 a_texCoord1;\n";
-        s += "layout(location = 10) in vec2 a_texCoord2;\n";
-        s += "layout(location = 11) in vec2 a_texCoord3;\n";
-        s += "layout(location = 12) in vec2 a_texCoord4;\n";
-        s += "layout(location = 13) in vec2 a_texCoord5;\n";
-        s += "layout(location = 14) in vec2 a_texCoord6;\n";
-        s += "layout(location = 15) in vec2 a_texCoord7;\n";
-        s += "out vec2 v_texCoords[7];\n";
+        s += "layout(location = 9)  in vec4 a_texCoord1;\n";
+        s += "layout(location = 10) in vec4 a_texCoord2;\n";
+        s += "layout(location = 11) in vec4 a_texCoord3;\n";
+        s += "layout(location = 12) in vec4 a_texCoord4;\n";
+        s += "layout(location = 13) in vec4 a_texCoord5;\n";
+        s += "layout(location = 14) in vec4 a_texCoord6;\n";
+        s += "layout(location = 15) in vec4 a_texCoord7;\n";
+        s += "out vec4 v_texCoords[7];\n";
     }
     if(FL(SF_LIGHTING))
     {
         s += "uniform vec4 u_ambientColor;\n";
-        s += "uniform vec4 u_matAmbient;\n";
-        s += "uniform vec4 u_matDiffuse;\n";
-        s += "uniform vec4 u_matSpecular;\n";
-        s += "uniform vec4 u_matEmission;\n";
-        s += "uniform float u_shininess;\n";
+        s += "uniform vec4 u_matAmbient[2];\n";
+        s += "uniform vec4 u_matDiffuse[2];\n";
+        s += "uniform vec4 u_matSpecular[2];\n";
+        s += "uniform vec4 u_matEmission[2];\n";
+        s += "uniform float u_shininess[2];\nfloat shininess;\n";
+        s += "vec4 matAmbient, matDiffuse, matSpecular, matEmission;\n";
+        if(FL(SF_MATERIAL_ARRAY))
+        {
+            s += "uniform highp sampler2D u_materialValues;\nuniform int u_materialWidth;\n";
+            s += "vec4 materialValue(int offset) {\n";
+            s += "  int address = gl_VertexID * 10 + offset;\n";
+            s += "  return texelFetch(u_materialValues, ivec2(address % u_materialWidth, address / u_materialWidth), 0);\n}\n";
+        }
     }
     if(FL(SF_LIGHT0) || FL(SF_LIGHT1) || FL(SF_LIGHT2) || FL(SF_LIGHT3) || 
             FL(SF_LIGHT4) || FL(SF_LIGHT5) || FL(SF_LIGHT6) || FL(SF_LIGHT7))
@@ -309,7 +359,7 @@ std::string BuildVertexShader()
         s += "  LightData light[8];\n";
         s += "};\n";
         // Per-vertex Phong lighting function
-        s += "vec4 calcLight(int i, vec3 n, vec3 vPos, vec3 vDir) {\n";
+        s += "vec4 calcLight(int i, vec3 n, vec3 vPos, vec3 vDir, inout vec3 specular) {\n";
         s += "  LightData l = light[i];\n";
         s += "  float spotExp    = l.spotParams.x;\n";
         s += "  float spotCutoff = l.spotParams.y;\n";
@@ -318,7 +368,7 @@ std::string BuildVertexShader()
         s += "  if(l.position.w == 0.0) {\n";
         s += "    lDir = normalize(l.position.xyz);\n";
         s += "  } else {\n";
-        s += "    vec3 v = l.position.xyz - vPos;\n";
+        s += "    vec3 v = l.position.xyz / l.position.w - vPos;\n";
         s += "    float d = length(v);\n";
         s += "    lDir = v / d;\n";
         s += "    att = 1.0 / (l.attenuationParams.x\n";
@@ -326,31 +376,22 @@ std::string BuildVertexShader()
         s += "               + l.attenuationParams.z * d * d);\n";
         s += "  }\n";
         s += "  float NdotL = max(dot(n, lDir), 0.0);\n";
-        s += "  vec4 diff = u_matDiffuse * l.diffuse * NdotL;\n";
-        s += "  vec4 amb  = u_matAmbient * l.ambient;\n";
+        s += "  vec4 diff = matDiffuse * l.diffuse * NdotL;\n";
+        s += "  vec4 amb  = matAmbient * l.ambient;\n";
         s += "  vec4 spec = vec4(0.0);\n";
-        s += "  if(NdotL > 0.0) {\n";
-        s += "    float spot = 1.0;\n";
-        s += "    if(spotCutoff < 180.0) {\n";
-        s += "      float sCos = dot(-lDir, normalize(l.spotDir.xyz));\n";
-        s += "      if(sCos < cos(radians(spotCutoff))) spot = 0.0;\n";
-        s += "      else spot = pow(max(sCos, 0.0), spotExp);\n";
-        s += "    }\n";
-        s += "    vec3 halfV = normalize(lDir + vDir);\n";
-        s += "    float sh = max(u_shininess, 1.0);\n";
-        s += "    spec = u_matSpecular * l.specular * pow(max(dot(n, halfV), 0.0), sh) * spot;\n";
-        s += "    diff *= spot;\n";
+        s += "  if(spotCutoff < 180.0) {\n";
+        s += "    float sCos = dot(-lDir, normalize(l.spotDir.xyz));\n";
+        s += "    if(sCos < cos(radians(spotCutoff))) att = 0.0;\n";
+        s += "    else att *= spotExp == 0.0 ? 1.0 : pow(max(sCos, 0.0), spotExp);\n";
         s += "  }\n";
-        s += "  return (amb + diff + spec) * att;\n";
+        s += "  if(NdotL > 0.0) {\n";
+        s += "    vec3 halfV = normalize(lDir + vDir);\n";
+        s += "    float shine = shininess == 0.0 ? 1.0 : pow(max(dot(n, halfV), 0.0), shininess);\n";
+        s += "    spec = matSpecular * l.specular * shine;\n";
+        s += "  }\n";
+        s += "  specular += spec.rgb * att;\n";
+        s += "  return (amb + diff) * att;\n";
         s += "}\n";
-        if(FL(SF_TWOSIDE))
-        {
-            // Back-face lighting with negated normal
-            s += "vec4 calcLightBack(int i, vec3 n, vec3 vPos, vec3 vDir) {\n";
-            s += "  return calcLight(i, -n, vPos, vDir);\n";
-            s += "}\n";
-            s += "flat out int v_facing;\n"; // 1=front,0=back; passed to FS
-        }
     }
     
     // Body
@@ -358,10 +399,14 @@ std::string BuildVertexShader()
     s += "  vec4 viewPos = u_modelview * a_position;\n";
     s += "  v_position   = u_proj * viewPos;\n";
     s += "  v_eyePos     = viewPos;\n";
-    s += "  gl_Position  = v_position;\n  gl_PointSize = u_pointSize;\n";
+    s += "  gl_Position = v_position;\n";
+    s += "  float pointDistance = length(viewPos.xyz / viewPos.w);\n";
+    s += "  float pointDivisor = dot(u_pointAttenuation, vec3(1.0, pointDistance, pointDistance * pointDistance));\n";
+    s += "  gl_PointSize = clamp(u_pointSize * inversesqrt(pointDivisor), u_pointLimits.x, u_pointLimits.y);\n";
+    s += "  v_secondaryColor = a_secondaryColor;\n";
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
     {
-        s += "  v_eyeDepth = -viewPos.z;\n";
+        s += globals->ff.fogSource == 0x8451 ? "  v_eyeDepth = a_fogCoord;\n" : "  v_eyeDepth = abs(viewPos.z);\n";
     }
     if(FL(SF_LIGHTING))
     {
@@ -373,48 +418,165 @@ std::string BuildVertexShader()
         {
             s += "  mat3 normalMatrix = u_normal;\n";
         }
-        s += "  vec3 rawN = a_normal;\n";
+        s += "  vec3 n = normalMatrix * a_normal;\n";
+        if(globals->ff.rescaleNormalEnabled) s += "  n /= length(normalMatrix[2]);\n";
         if(FL(SF_NORMALIZE))
         {
-            s += "  rawN = normalize(rawN);\n";
+            s += "  n = normalize(n);\n";
         }
-        s += "  vec3 n = normalize(normalMatrix * rawN);\n";
-        s += "  vec3 vDir = normalize(-viewPos.xyz);\n";
-        s += "  lowp vec4 finalLight = u_ambientColor * u_matAmbient + u_matEmission;\n";
-        if(FL(SF_LIGHT0)) s += "  finalLight += calcLight(0, n, viewPos.xyz, vDir);\n";
-        if(FL(SF_LIGHT1)) s += "  finalLight += calcLight(1, n, viewPos.xyz, vDir);\n";
-        if(FL(SF_LIGHT2)) s += "  finalLight += calcLight(2, n, viewPos.xyz, vDir);\n";
-        if(FL(SF_LIGHT3)) s += "  finalLight += calcLight(3, n, viewPos.xyz, vDir);\n";
-        if(FL(SF_LIGHT4)) s += "  finalLight += calcLight(4, n, viewPos.xyz, vDir);\n";
-        if(FL(SF_LIGHT5)) s += "  finalLight += calcLight(5, n, viewPos.xyz, vDir);\n";
-        if(FL(SF_LIGHT6)) s += "  finalLight += calcLight(6, n, viewPos.xyz, vDir);\n";
-        if(FL(SF_LIGHT7)) s += "  finalLight += calcLight(7, n, viewPos.xyz, vDir);\n";
-        s += "  v_color = clamp(finalLight, 0.0, 1.0) * a_color;\n";
-        if(FL(SF_TWOSIDE))
+        s += globals->ff.lightModelLocalViewer ? "  vec3 vDir = normalize(-viewPos.xyz / viewPos.w);\n" : "  vec3 vDir = vec3(0.0, 0.0, 1.0);\n";
+        for(int side = 0; side < (FL(SF_TWOSIDE) ? 2 : 1); ++side)
         {
-            // TODO:
+            std::string index = "[" + std::to_string(side) + "]";
+            s += "  { matAmbient = u_matAmbient" + index + "; matDiffuse = u_matDiffuse" + index + ";\n";
+            s += "  matSpecular = u_matSpecular" + index + "; matEmission = u_matEmission" + index + ";\n";
+            s += "  shininess = u_shininess" + index + ";\n";
+            if(FL(SF_MATERIAL_ARRAY))
+            {
+                s += "  matAmbient = materialValue(" + std::to_string(side * 5) + ");\n";
+                s += "  matDiffuse = materialValue(" + std::to_string(side * 5 + 1) + ");\n";
+                s += "  matSpecular = materialValue(" + std::to_string(side * 5 + 2) + ");\n";
+                s += "  matEmission = materialValue(" + std::to_string(side * 5 + 3) + ");\n";
+                s += "  shininess = materialValue(" + std::to_string(side * 5 + 4) + ").x;\n";
+            }
+            if(FL(SF_COLOR_MAT) && globals->ff.colorMaterialFace != (side ? GL_FRONT : GL_BACK))
+            {
+                GLenum mode = globals->ff.colorMaterialMode;
+                if(mode == GL_AMBIENT || mode == GL_AMBIENT_AND_DIFFUSE) s += "  matAmbient = clamp(a_color, 0.0, 1.0);\n";
+                if(mode == GL_DIFFUSE || mode == GL_AMBIENT_AND_DIFFUSE) s += "  matDiffuse = clamp(a_color, 0.0, 1.0);\n";
+                if(mode == GL_SPECULAR) s += "  matSpecular = clamp(a_color, 0.0, 1.0);\n";
+                if(mode == GL_EMISSION) s += "  matEmission = clamp(a_color, 0.0, 1.0);\n";
+            }
+            s += "  vec4 finalLight = u_ambientColor * matAmbient + matEmission;\n";
+            s += "  vec3 specular = vec3(0.0);\n";
+            for(int light = 0; light < 8; ++light)
+                if(FL(SF_LIGHT0 << light)) s += "  finalLight += calcLight(" + std::to_string(light) + (side ? ", -n" : ", n") + ", viewPos.xyz / viewPos.w, vDir, specular);\n";
+            std::string color = side ? "v_backColor" : "v_color", secondary = side ? "v_backSecondaryColor" : "v_secondaryColor";
+            if(globals->ff.lightModelColorControl == 0x81FA) s += "  " + secondary + " = specular;\n";
+            else s += "  finalLight.rgb += specular;\n  " + secondary + " = vec3(0.0);\n";
+            s += "  " + color + " = vec4(finalLight.rgb, matDiffuse.a); }\n";
         }
     }
     else
     {
         s += "  v_color = a_color;\n";
     }
-    if(FL(SF_TEXUNIT1)) s += "  v_texCoords[0] = a_texCoord1;\n";
-    if(FL(SF_TEXUNIT2)) s += "  v_texCoords[1] = a_texCoord2;\n";
-    if(FL(SF_TEXUNIT3)) s += "  v_texCoords[2] = a_texCoord3;\n";
-    if(FL(SF_TEXUNIT4)) s += "  v_texCoords[3] = a_texCoord4;\n";
-    if(FL(SF_TEXUNIT5)) s += "  v_texCoords[4] = a_texCoord5;\n";
-    if(FL(SF_TEXUNIT6)) s += "  v_texCoords[5] = a_texCoord6;\n";
-    if(FL(SF_TEXUNIT7)) s += "  v_texCoords[6] = a_texCoord7;\n";
-    s += "  v_texCoord = (u_texMatrix * vec4(a_texCoord, 0.0, 1.0)).xy;\n";
+    if(FL(SF_CLAMP_VERTEX))
+    {
+        s += "  v_color = clamp(v_color, 0.0, 1.0); v_secondaryColor = clamp(v_secondaryColor, 0.0, 1.0);\n";
+        if(FL(SF_TWOSIDE)) s += "  v_backColor = clamp(v_backColor, 0.0, 1.0); v_backSecondaryColor = clamp(v_backSecondaryColor, 0.0, 1.0);\n";
+    }
+    bool normalTexgen = false, reflectionTexgen = false, sphereTexgen = false;
+    for(const auto& unit : globals->ff.texGen) for(const auto& gen : unit)
+    {
+        if(!gen.enabled) continue;
+        normalTexgen |= gen.mode == 0x8511 || gen.mode == 0x8512 || gen.mode == 0x2402;
+        reflectionTexgen |= gen.mode == 0x8512 || gen.mode == 0x2402;
+        sphereTexgen |= gen.mode == 0x2402;
+    }
+    if(normalTexgen)
+    {
+        s += "  mat3 texgenNormalMatrix = transpose(inverse(mat3(u_modelview)));\n";
+        s += "  vec3 texgenNormal = texgenNormalMatrix * a_normal;\n";
+        if(globals->ff.rescaleNormalEnabled) s += "  texgenNormal /= length(texgenNormalMatrix[2]);\n";
+        if(FL(SF_NORMALIZE)) s += "  texgenNormal = normalize(texgenNormal);\n";
+    }
+    if(reflectionTexgen) s += "  vec3 texgenReflection = reflect(normalize(viewPos.xyz / viewPos.w), texgenNormal);\n";
+    if(sphereTexgen) s += "  vec2 texgenSphere = texgenReflection.xy / (2.0 * length(texgenReflection + vec3(0.0,0.0,1.0))) + vec2(0.5);\n";
+    for(int unit = 0; unit < 8; ++unit)
+    {
+        if(unit && !FL(SF_TEXUNIT1 << (unit-1))) continue;
+        s += "  { vec4 coords = a_texCoord" + (unit ? std::to_string(unit) : "") + ";\n";
+        for(int c = 0; c < 4; ++c)
+        {
+            const auto& gen = globals->ff.texGen[unit][c];
+            if(!gen.enabled) continue;
+            std::string component(1, "xyzw"[c]), index = std::to_string(unit*4+c);
+            if(gen.mode == 0x2401) s += "    coords." + component + " = dot(a_position, u_objectPlanes[" + index + "]);\n";
+            else if(gen.mode == 0x2400) s += "    coords." + component + " = dot(viewPos, u_eyePlanes[" + index + "]);\n";
+            else if(gen.mode == 0x8511) s += "    coords." + component + " = texgenNormal." + component + ";\n";
+            else if(gen.mode == 0x8512) s += "    coords." + component + " = texgenReflection." + component + ";\n";
+            else if(gen.mode == 0x2402) s += "    coords." + component + " = texgenSphere." + component + ";\n";
+        }
+        s += "    " + (unit ? "v_texCoords[" + std::to_string(unit-1) + "]" : "v_texCoord") + " = u_texMatrix[" + std::to_string(unit) + "] * coords; }\n";
+    }
     s += "}\n";
     return s;
 }
 
+static std::string ClampFragment(const std::string& value)
+{
+    return FL(SF_CLAMP_FRAGMENT) ? "clamp(" + value + ", 0.0, 1.0)" : value;
+}
+
+static std::string TextureSource(GLenum source, int unit)
+{
+    if(source == GL_TEXTURE) return ClampFragment("tex" + std::to_string(unit));
+    if(source >= GL_TEXTURE0 && source < GL_TEXTURE0 + 8) return ClampFragment("tex" + std::to_string(source - GL_TEXTURE0));
+    if(source == 0x8576) return ClampFragment(unit ? "u_texColor[" + std::to_string(unit-1) + "]" : "u_texColor0");
+    if(source == 0x8577) return ClampFragment("primaryColor");
+    return ClampFragment("finalColor");
+}
+
+static std::string TextureArgument(GLenum source, GLenum operand, int unit, bool alpha)
+{
+    std::string value = TextureSource(source, unit);
+    value += alpha ? ".a" : (operand == GL_SRC_COLOR || operand == GL_ONE_MINUS_SRC_COLOR) ? ".rgb" : ".aaa";
+    if(operand == GL_ONE_MINUS_SRC_COLOR || operand == GL_ONE_MINUS_SRC_ALPHA) value = "(1.0 - " + value + ")";
+    return value;
+}
+
+static std::string TextureCombine(GLenum mode, const std::string* args)
+{
+    if(mode == GL_REPLACE) return args[0];
+    if(mode == GL_MODULATE) return args[0] + " * " + args[1];
+    if(mode == GL_ADD) return args[0] + " + " + args[1];
+    if(mode == GL_SUBTRACT) return args[0] + " - " + args[1];
+    if(mode == 0x8574) return args[0] + " + " + args[1] + " - 0.5";
+    if(mode == 0x8575) return "mix(" + args[1] + ", " + args[0] + ", " + args[2] + ")";
+    return "vec3(4.0 * dot(" + args[0] + " - 0.5, " + args[1] + " - 0.5))";
+}
+
+static std::string BuildTextureEnv(int unit)
+{
+    const auto& env = globals->ff.texEnv[unit];
+    std::string index = std::to_string(unit), tex = ClampFragment("tex" + index);
+    std::string color = TextureSource(0x8576, unit);
+    if(env.mode == 0x8570)
+    {
+        std::string rgb[3], alpha[3];
+        for(int i = 0; i < 3; ++i)
+        {
+            rgb[i] = TextureArgument(env.sourceRGB[i], env.operandRGB[i], unit, false);
+            alpha[i] = TextureArgument(env.sourceAlpha[i], env.operandAlpha[i], unit, true);
+        }
+        std::string result = "  { vec3 rgb = " + ClampFragment("(" + TextureCombine(env.combineRGB, rgb) + ") * " + std::to_string(env.scaleRGB) + ".0") + ";\n";
+        std::string a = env.combineRGB == 0x86AF ? "rgb.r" : ClampFragment("(" + TextureCombine(env.combineAlpha, alpha) + ") * " + std::to_string(env.scaleAlpha) + ".0");
+        return result + "    finalColor = vec4(rgb, " + a + "); }\n";
+    }
+    std::string result = "  { finalColor = " + ClampFragment("finalColor") + "; vec4 previous = finalColor;\n";
+    if(env.mode == GL_REPLACE) result += "    finalColor = " + tex + ";\n";
+    else if(env.mode == GL_MODULATE) result += "    finalColor *= " + tex + ";\n";
+    else if(env.mode == GL_ADD) result += "    finalColor = vec4(finalColor.rgb + " + tex + ".rgb, finalColor.a * " + tex + ".a);\n";
+    else if(env.mode == GL_BLEND) result += "    finalColor = vec4(mix(finalColor.rgb, " + color + ".rgb, " + tex + ".rgb), finalColor.a * " + tex + ".a);\n";
+    else if(env.mode == GL_DECAL) result += "    finalColor.rgb = mix(finalColor.rgb, " + tex + ".rgb, " + tex + ".a);\n";
+    result += "    if(u_alphaOnly[" + index + "] == 1) finalColor.rgb = previous.rgb;\n";
+    result += "    if(u_alphaOnly[" + index + "] == 2) finalColor.a = previous.a;\n";
+    if(env.mode == GL_ADD) result += "    if(u_alphaOnly[" + index + "] == 3) finalColor.a = previous.a + " + tex + ".a;\n";
+    if(env.mode == GL_BLEND) result += "    if(u_alphaOnly[" + index + "] == 3) finalColor.a = mix(previous.a, " + color + ".a, " + tex + ".a);\n";
+    return result + "    finalColor = " + ClampFragment("finalColor") + "; }\n";
+}
+
 std::string BuildFragmentShader()
 {
+    std::string pointCoords = globals->ff.pointOrigin == 0x8CA2 ? "gl_PointCoord" : "vec2(gl_PointCoord.x, 1.0 - gl_PointCoord.y)";
     // Header
-    std::string s = "#version 320 es\nprecision highp float;\n";
+    std::string s = "#version 300 es\nprecision highp float;\n";
+    s += FL(SF_FLATSHADING) ? "flat in vec3 v_secondaryColor;\n" : "in vec3 v_secondaryColor;\n";
+    if(FL(SF_TWOSIDE))
+    {
+        s += FL(SF_FLATSHADING) ? "flat in lowp vec4 v_backColor;\nflat in vec3 v_backSecondaryColor;\n" : "in lowp vec4 v_backColor;\nin vec3 v_backSecondaryColor;\n";
+    }
     if(FL(SF_FLATSHADING))
     {
         s += "flat in lowp vec4 v_color;\n";
@@ -425,15 +587,16 @@ std::string BuildFragmentShader()
     }
     if(FL(SF_AFFINE))
     {
-        s += "in vec2 v_texCoord;\n";
+        s += "in vec4 v_texCoord;\n";
     }
     else
     {
-        s += "in vec2 v_texCoord;\n";
+        s += "in vec4 v_texCoord;\n";
     }
     s += "in vec4 v_position;\n";
     s += "in vec4 v_eyePos;\n";
     s += "uniform sampler2D u_texture;\nuniform int u_texMode0;\nuniform vec4 u_texColor0;\n";
+    s += "uniform bool u_pointSprite;\n";
     s += "out lowp vec4 out_FragColor;\n";
     s += "lowp vec4 finalColor;\n";
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
@@ -461,23 +624,19 @@ std::string BuildFragmentShader()
     if(FL(SF_TEXUNIT1) || FL(SF_TEXUNIT2) || FL(SF_TEXUNIT3) || FL(SF_TEXUNIT4) ||
         FL(SF_TEXUNIT5) || FL(SF_TEXUNIT6) || FL(SF_TEXUNIT7))
     {
-        s += "in vec2 v_texCoords[7];\n";
+        s += "in vec4 v_texCoords[7];\n";
         s += "uniform vec4 u_texColor[7];\n";
         s += "uniform int  u_texMode[7];\n";
         s += "uniform sampler2D u_texId[7];\n";
         s += "vec4 GLIN_sampleUnit(int unit) {\n";
-        for(int i = 0; i < 7; ++i) s += "if(unit == " + std::to_string(i) + ") return texture(u_texId[" + std::to_string(i) + "], v_texCoords[" + std::to_string(i) + "]);\n";
+        for(int i = 0; i < 7; ++i)
+        {
+            std::string index = std::to_string(i);
+            std::string sample = "textureProj(u_texId[" + index + "], v_texCoords[" + index + "])";
+            if(globals->ff.pointCoordReplace[i+1]) sample = "(u_pointSprite ? texture(u_texId[" + index + "], " + pointCoords + ") : " + sample + ")";
+            s += "if(unit == " + index + ") return " + sample + ";\n";
+        }
         s += "return vec4(1.0); }\n";
-        s += "void mixUnitColor(int unit) {\n";
-        s += "  int mode = u_texMode[unit];\n";
-        s += "  lowp vec4 texColor = GLIN_sampleUnit(unit);\n";
-        s += "  if(u_alphaOnly[unit+1] != 0) { finalColor.a = mode == 0 ? texColor.a : finalColor.a * texColor.a; return; }\n";
-        s += "  if(mode == 0) { finalColor = texColor; return; }\n";              // GL_REPLACE
-        s += "  if(mode == 1) { finalColor *= texColor; return; }\n";             // GL_MODULATE
-        s += "  if(mode == 2) { finalColor = vec4(finalColor.rgb + texColor.rgb, finalColor.a * texColor.a); return; }\n"; // GL_ADD
-        s += "  if(mode == 3) { finalColor = vec4(mix(finalColor.rgb, u_texColor[unit].rgb, texColor.rgb), finalColor.a * texColor.a); return; }\n"; // GL_BLEND
-        s += "  if(mode == 4) { finalColor = vec4(mix(finalColor.rgb, texColor.rgb, texColor.a), finalColor.a); return; }\n"; // GL_DECAL
-        s += "}\n";
     }
     // Alpha test helper
     if(FL(SF_ALPHATEST))
@@ -511,30 +670,22 @@ std::string BuildFragmentShader()
     if(FL(SF_CLIPPLANE4)) s += "  if(dot(v_eyePos, u_clipPlane[3]) < 0.0) discard;\n";
     if(FL(SF_CLIPPLANE5)) s += "  if(dot(v_eyePos, u_clipPlane[4]) < 0.0) discard;\n";
     if(FL(SF_CLIPPLANE6)) s += "  if(dot(v_eyePos, u_clipPlane[5]) < 0.0) discard;\n";
-    if(FL(SF_TEXTURED))
+    for(int i = 0; i < 8; ++i)
     {
-        s += "  vec4 tex = texture(u_texture, v_texCoord);\n";
-        s += "  finalColor = v_color * tex;\n";
-        s += "  if(u_texMode0 == 0) finalColor = tex;\n";
-        s += "  if(u_texMode0 == 2) finalColor = vec4(v_color.rgb + tex.rgb, v_color.a * tex.a);\n";
-        s += "  if(u_texMode0 == 3) finalColor = vec4(mix(v_color.rgb, u_texColor0.rgb, tex.rgb), v_color.a * tex.a);\n";
-        s += "  if(u_texMode0 == 4) finalColor = vec4(mix(v_color.rgb, tex.rgb, tex.a), v_color.a);\n";
-        s += "  if(u_alphaOnly[0] != 0) finalColor = vec4(v_color.rgb, u_texMode0 == 0 ? tex.a : v_color.a * tex.a);\n";
+        bool enabled = i == 0 ? FL(SF_TEXTURED) : FL(SF_TEXUNIT1 << (i-1));
+        std::string sample = i ? "GLIN_sampleUnit(" + std::to_string(i-1) + ")" : "textureProj(u_texture, v_texCoord)";
+        if(!i && globals->ff.pointCoordReplace[0]) sample = "(u_pointSprite ? texture(u_texture, " + pointCoords + ") : " + sample + ")";
+        s += "  vec4 tex" + std::to_string(i) + " = " + (enabled ? sample : "vec4(1.0)") + ";\n";
     }
-    else
-    {
-        s += "  finalColor = v_color;\n";
-    }
-    if(FL(SF_TEXUNIT1)) s += "  mixUnitColor(0);\n";
-    if(FL(SF_TEXUNIT2)) s += "  mixUnitColor(1);\n";
-    if(FL(SF_TEXUNIT3)) s += "  mixUnitColor(2);\n";
-    if(FL(SF_TEXUNIT4)) s += "  mixUnitColor(3);\n";
-    if(FL(SF_TEXUNIT5)) s += "  mixUnitColor(4);\n";
-    if(FL(SF_TEXUNIT6)) s += "  mixUnitColor(5);\n";
-    if(FL(SF_TEXUNIT7)) s += "  mixUnitColor(6);\n";
+    s += FL(SF_TWOSIDE) ? "  vec4 primaryColor = gl_FrontFacing ? v_color : v_backColor;\n  vec3 secondaryColor = gl_FrontFacing ? v_secondaryColor : v_backSecondaryColor;\n" : "  vec4 primaryColor = v_color;\n  vec3 secondaryColor = v_secondaryColor;\n";
+    s += "  finalColor = primaryColor;\n";
+    for(int i = 0; i < 8; ++i)
+        if(i == 0 ? FL(SF_TEXTURED) : FL(SF_TEXUNIT1 << (i-1))) s += BuildTextureEnv(i);
+    if(FL(SF_LIGHTING) ? globals->ff.lightModelColorControl == 0x81FA : globals->ff.colorSum) s += "  finalColor.rgb += secondaryColor;\n";
+    s += "  finalColor = " + ClampFragment("finalColor") + ";\n";
     if(FL(SF_FOG_EXP2) || FL(SF_FOG_LINEAR) || FL(SF_FOG_EXP))
     {
-        s += "  finalColor.rgb = mix(u_fogColor.rgb, finalColor.rgb, getFogValue());\n";
+        s += "  finalColor.rgb = " + ClampFragment("mix(" + ClampFragment("u_fogColor.rgb") + ", finalColor.rgb, getFogValue())") + ";\n";
     }
     // Alpha test — discard if test fails
     if(FL(SF_ALPHATEST))
@@ -624,8 +775,9 @@ static inline int AlphaFuncToInt(GLenum f)
     }
 }
 
-void UseFixedProgram()
+void UseFixedProgram(GLenum mode)
 {
+    GLIN_InitExtensions();
     // If the app has its own shader active, don't override it.
     if(globals->gl.activeProgram != 0)
     {
@@ -642,7 +794,22 @@ void UseFixedProgram()
     
     BuildShaderFlag();
     
-    auto it = g_mapFixedPrograms.find(g_nFixedPipelineShaderFlags);
+    std::string key = std::to_string(g_nFixedPipelineShaderFlags);
+    key += ":" + std::to_string(globals->ff.fogSource) + ":" + std::to_string(globals->ff.colorSum);
+    key += ":" + std::to_string(globals->ff.pointOrigin);
+    key += ":" + std::to_string(globals->ff.rescaleNormalEnabled);
+    key += ":" + std::to_string(globals->ff.lightModelColorControl) + ":" + std::to_string(globals->ff.lightModelLocalViewer);
+    key += ":" + std::to_string(globals->ff.colorMaterialFace) + ":" + std::to_string(globals->ff.colorMaterialMode);
+    for(bool replace : globals->ff.pointCoordReplace) key += replace ? ":1" : ":0";
+    for(const auto& unit : globals->ff.texGen) for(const auto& gen : unit) key += ":" + std::to_string(gen.enabled) + ":" + std::to_string(gen.mode);
+    for(const auto& env : globals->ff.texEnv)
+    {
+        key += ":" + std::to_string(env.mode) + ":" + std::to_string(env.combineRGB) + ":" + std::to_string(env.combineAlpha);
+        key += ":" + std::to_string(env.scaleRGB) + ":" + std::to_string(env.scaleAlpha);
+        for(int i = 0; i < 3; ++i)
+            key += ":" + std::to_string(env.sourceRGB[i]) + ":" + std::to_string(env.sourceAlpha[i]) + ":" + std::to_string(env.operandRGB[i]) + ":" + std::to_string(env.operandAlpha[i]);
+    }
+    auto it = g_mapFixedPrograms.find(key);
     if(it != g_mapFixedPrograms.end())
     {
         activeFixedProgram = it->second.get();
@@ -656,7 +823,7 @@ void UseFixedProgram()
         program->program = g_nUberShader;
         
         activeFixedProgram = program;
-        g_mapFixedPrograms.emplace(g_nFixedPipelineShaderFlags, std::shared_ptr<fixed_program_t>(program));
+        g_mapFixedPrograms.emplace(key, std::shared_ptr<fixed_program_t>(program));
         
         program->uModelView.id    = glGetUniformLocation(g_nUberShader, "u_modelview");
         program->uProj.id         = glGetUniformLocation(g_nUberShader, "u_proj");
@@ -671,14 +838,25 @@ void UseFixedProgram()
         program->uTexModes.id     = glGetUniformLocation(g_nUberShader, "u_texMode");
         program->uTexIDs.id       = glGetUniformLocation(g_nUberShader, "u_texId");
         program->uPointSize.id = glGetUniformLocation(g_nUberShader, "u_pointSize");
+        program->uPointLimits.id = glGetUniformLocation(g_nUberShader, "u_pointLimits");
+        program->uPointAttenuation.id = glGetUniformLocation(g_nUberShader, "u_pointAttenuation");
+        program->uPointSprite.id = glGetUniformLocation(g_nUberShader, "u_pointSprite");
+        program->uObjectPlanes.id = glGetUniformLocation(g_nUberShader, "u_objectPlanes");
+        program->uEyePlanes.id = glGetUniformLocation(g_nUberShader, "u_eyePlanes");
         program->uTexMatrix.id = glGetUniformLocation(g_nUberShader, "u_texMatrix");
         program->uTexMode0.id = glGetUniformLocation(g_nUberShader, "u_texMode0");
         program->uTexColor0.id = glGetUniformLocation(g_nUberShader, "u_texColor0");
-        program->uShininess.id    = glGetUniformLocation(g_nUberShader, "u_shininess");
-        program->uMatAmbient.id   = glGetUniformLocation(g_nUberShader, "u_matAmbient");
-        program->uMatDiffuse.id   = glGetUniformLocation(g_nUberShader, "u_matDiffuse");
-        program->uMatSpecular.id  = glGetUniformLocation(g_nUberShader, "u_matSpecular");
-        program->uMatEmission.id  = glGetUniformLocation(g_nUberShader, "u_matEmission");
+        program->uMaterialValues.id = glGetUniformLocation(g_nUberShader, "u_materialValues");
+        program->uMaterialWidth.id = glGetUniformLocation(g_nUberShader, "u_materialWidth");
+        for(int side = 0; side < 2; ++side)
+        {
+            std::string index = "[" + std::to_string(side) + "]";
+            program->uShininess[side].id = glGetUniformLocation(g_nUberShader, ("u_shininess" + index).c_str());
+            program->uMatAmbient[side].id = glGetUniformLocation(g_nUberShader, ("u_matAmbient" + index).c_str());
+            program->uMatDiffuse[side].id = glGetUniformLocation(g_nUberShader, ("u_matDiffuse" + index).c_str());
+            program->uMatSpecular[side].id = glGetUniformLocation(g_nUberShader, ("u_matSpecular" + index).c_str());
+            program->uMatEmission[side].id = glGetUniformLocation(g_nUberShader, ("u_matEmission" + index).c_str());
+        }
         program->uAlphaRef.id     = glGetUniformLocation(g_nUberShader, "u_alphaRef");
         program->uAlphaFunc.id    = glGetUniformLocation(g_nUberShader, "u_alphaFunc");
         program->uClipPlanes.id   = glGetUniformLocation(g_nUberShader, "u_clipPlane");
@@ -697,7 +875,21 @@ void UseFixedProgram()
     activeFixedProgram->uNormal.Apply(GetNormalMatrix(globals->matrix.modelview.Current().m), false);
     activeFixedProgram->uDiffuse.Apply(0);
     activeFixedProgram->uPointSize.Apply(globals->ff.pointSize);
-    activeFixedProgram->uTexMatrix.Apply(globals->matrix.texture.Current());
+    activeFixedProgram->uPointSprite.Apply((int)(mode == GL_POINTS && globals->ff.pointSprite));
+    GLfloat objectPlanes[32][4], eyePlanes[32][4];
+    for(int unit = 0; unit < 8; ++unit) for(int c = 0; c < 4; ++c)
+    {
+        memcpy(objectPlanes[unit*4+c], globals->ff.texGen[unit][c].objectPlane, sizeof(objectPlanes[0]));
+        memcpy(eyePlanes[unit*4+c], globals->ff.texGen[unit][c].eyePlane, sizeof(eyePlanes[0]));
+    }
+    glUniform4fv(activeFixedProgram->uObjectPlanes.id, 32, objectPlanes[0]);
+    glUniform4fv(activeFixedProgram->uEyePlanes.id, 32, eyePlanes[0]);
+    activeFixedProgram->uPointLimits.Apply(vector2_t{globals->ff.pointMin, globals->ff.pointMax});
+    activeFixedProgram->uPointAttenuation.Apply(vector3_t{globals->ff.pointAttenuation[0], globals->ff.pointAttenuation[1], globals->ff.pointAttenuation[2]});
+    matrix4_t textureMatrices[8];
+    textureMatrices[0] = globals->matrix.texture.Current();
+    for(int i = 1; i < 8; ++i) textureMatrices[i] = globals->matrix.textureUnits[i-1].Current();
+    glUniformMatrix4fv(activeFixedProgram->uTexMatrix.id, 8, GL_FALSE, textureMatrices[0].m);
     GLint previousUnit = 0;
     glGetIntegerv(GL_ACTIVE_TEXTURE, &previousUnit);
     int alphaOnly[8] = {};
@@ -707,30 +899,28 @@ void UseFixedProgram()
         GLint binding = 0;
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &binding);
         auto it = globals->textures.find((GLuint)binding);
-        alphaOnly[i] = it != globals->textures.end() && it->second->baseFormat == GL_ALPHA;
+        GLenum format = it != globals->textures.end() ? it->second->baseFormat : GL_RGBA;
+        alphaOnly[i] = format == GL_ALPHA ? 1 : (format == GL_RGB || format == GL_LUMINANCE || format == 1 || format == 3 || format == GL_RGB8 || format == GL_SRGB8) ? 2 : format == 0x8049 ? 3 : 0;
     }
     glActiveTexture(previousUnit);
     activeFixedProgram->uAlphaOnly.Apply(alphaOnly, 8);
-    activeFixedProgram->uTexMode0.Apply((int)globals->client.texCoord[0].texCoordBlendLogic);
-    activeFixedProgram->uTexColor0.Apply(globals->client.texCoord[0].texCoordColor);
+    activeFixedProgram->uTexMode0.Apply((int)globals->ff.texEnv[0].mode);
+    activeFixedProgram->uTexColor0.Apply(globals->ff.texEnv[0].color);
     activeFixedProgram->uFogColor.Apply(globals->ff.fogColor);
     activeFixedProgram->uFogValues.Apply(vector3_t{globals->ff.fogStart, globals->ff.fogEnd, globals->ff.fogDensity});
     activeFixedProgram->uAmbientColor.Apply(globals->render.ambient);
+    activeFixedProgram->uMaterialValues.Apply(8);
+    activeFixedProgram->uMaterialWidth.Apply(globals->render.materialWidth);
     activeFixedProgram->uLights.Apply(globals->ff.lights);
-    activeFixedProgram->uShininess.Apply(globals->ff.matShininess);
-    if(FL(SF_COLOR_MAT))
+    for(int side = 0; side < 2; ++side)
     {
-        static const vector4_t white = {1.0f, 1.0f, 1.0f, 1.0f};
-        activeFixedProgram->uMatAmbient.Apply(white);
-        activeFixedProgram->uMatDiffuse.Apply(white);
+        const auto& material = globals->ff.materials[side];
+        activeFixedProgram->uShininess[side].Apply(material.shininess);
+        activeFixedProgram->uMatAmbient[side].Apply(*(const vector4_t*)material.ambient);
+        activeFixedProgram->uMatDiffuse[side].Apply(*(const vector4_t*)material.diffuse);
+        activeFixedProgram->uMatSpecular[side].Apply(*(const vector4_t*)material.specular);
+        activeFixedProgram->uMatEmission[side].Apply(*(const vector4_t*)material.emission);
     }
-    else
-    {
-        activeFixedProgram->uMatAmbient.Apply(*(const vector4_t*)globals->ff.matAmbient);
-        activeFixedProgram->uMatDiffuse.Apply(*(const vector4_t*)globals->ff.matDiffuse);
-    }
-    activeFixedProgram->uMatSpecular.Apply(*(const vector4_t*)globals->ff.matSpecular);
-    activeFixedProgram->uMatEmission.Apply(*(const vector4_t*)globals->ff.matEmission);
     // Alpha test uniforms
     if(FL(SF_ALPHATEST))
     {
@@ -753,10 +943,10 @@ void UseFixedProgram()
         const int samplers[7] = {1, 2, 3, 4, 5, 6, 7};
         for(int i = 0; i < 7; ++i)
         {
-            modes[i] = globals->client.texCoord[i + 1].texCoordBlendLogic;
+            modes[i] = globals->ff.texEnv[i+1].mode;
         }
         vector4_t colors[7];
-        for(int i = 0; i < 7; ++i) colors[i] = globals->client.texCoord[i+1].texCoordColor;
+        for(int i = 0; i < 7; ++i) colors[i] = globals->ff.texEnv[i+1].color;
         if(activeFixedProgram->uTexColors.id != -1) glUniform4fv(activeFixedProgram->uTexColors.id, 7, &colors[0].x);
         activeFixedProgram->uTexModes.Apply(modes, 7);
         activeFixedProgram->uTexIDs.Apply(samplers, 7);
@@ -766,9 +956,41 @@ void UseFixedProgram()
 void TransformFixedVerts()
 {
     if(globals->render.vertices.empty()) return;
+    auto& render = globals->render;
+    GLuint materialTexture = 0;
+    GLint activeTexture = 0, textureBinding = 0, samplerBinding = 0, unpackBuffer = 0, unpack[3] = {};
+    const GLenum unpackNames[] = {GL_UNPACK_ROW_LENGTH, GL_UNPACK_SKIP_ROWS, GL_UNPACK_SKIP_PIXELS};
+    if(!render.materialValues.empty())
+    {
+        GLint maxSize;
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxSize);
+        size_t count = render.materialValues.size();
+        if(maxSize <= 0 || count > (size_t)maxSize * maxSize || count > INT32_MAX) { SetError(GL_OUT_OF_MEMORY); return; }
+        GLint width = count < (size_t)maxSize ? (GLint)count : maxSize;
+        GLint height = (GLint)((count + width - 1) / width);
+        render.materialValues.resize((size_t)width * height);
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
+        glActiveTexture(GL_TEXTURE0 + 8);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &textureBinding);
+        glGetIntegerv(GL_SAMPLER_BINDING, &samplerBinding);
+        glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpackBuffer);
+        for(int i = 0; i < 3; ++i)
+        {
+            glGetIntegerv(unpackNames[i], &unpack[i]);
+            glPixelStorei(unpackNames[i], 0);
+        }
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        glBindSampler(8, 0);
+        glGenTextures(1, &materialTexture);
+        glBindTexture(GL_TEXTURE_2D, materialTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, render.materialValues.data());
+        render.materialWidth = width;
+        glActiveTexture(activeTexture);
+    }
     client_state_t previous = globals->client;
     auto& client = globals->client;
-    auto& render = globals->render;
     client.vertexArrayEnabled = true;
     client.vertexSize = 4; client.vertexType = GL_FLOAT; client.vertexStride = 0; client.vertexBuffer = 0;
     client.vertexPtr = render.vertices.data();
@@ -778,12 +1000,31 @@ void TransformFixedVerts()
     client.normalArrayEnabled = true;
     client.normalType = GL_FLOAT; client.normalStride = 0; client.normalBuffer = 0;
     client.normalPtr = render.normals.data();
-    for(auto& tex : client.texCoord) tex.enabled = false;
-    auto& tex = client.texCoord[0];
-    tex.enabled = true; tex.texCoordSize = 2; tex.texCoordType = GL_FLOAT;
-    tex.texCoordStride = 0; tex.texCoordBuffer = 0; tex.texCoordPtr = render.texcoords.data();
+    client.secondaryColorArrayEnabled = true;
+    client.secondaryColorSize = 3; client.secondaryColorType = GL_FLOAT; client.secondaryColorStride = 0; client.secondaryColorBuffer = 0;
+    client.secondaryColorPtr = render.secondaryColors.data();
+    client.fogCoordArrayEnabled = true;
+    client.fogCoordType = GL_FLOAT; client.fogCoordStride = 0; client.fogCoordBuffer = 0;
+    client.fogCoordPtr = render.fogCoords.data();
+    for(int i = 0; i < 8; ++i)
+    {
+        auto& tex = client.texCoord[i];
+        tex.enabled = true; tex.texCoordSize = 4; tex.texCoordType = GL_FLOAT;
+        tex.texCoordStride = 0; tex.texCoordBuffer = 0; tex.texCoordPtr = render.texcoords[i].data();
+    }
     WRAP(glDrawArrays(render.lastPrimitiveMode, 0, (GLsizei)render.vertices.size()));
     globals->client = previous;
+    if(render.materialWidth)
+    {
+        render.materialWidth = 0;
+        glActiveTexture(GL_TEXTURE0 + 8);
+        glBindTexture(GL_TEXTURE_2D, textureBinding);
+        glBindSampler(8, samplerBinding);
+        glDeleteTextures(1, &materialTexture);
+        glActiveTexture(activeTexture);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, unpackBuffer);
+        for(int i = 0; i < 3; ++i) glPixelStorei(unpackNames[i], unpack[i]);
+    }
 }
 
 void TransposeMatrix(const float* src, float* dst)

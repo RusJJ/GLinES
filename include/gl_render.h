@@ -1,4 +1,6 @@
 #include "GLES.h"
+void UpdateColorMaterial();
+void WRAP(glFogCoordPointer(GLenum type, GLsizei stride, const void* ptr));
 
 void WRAP(glBegin(GLenum mode));
 void WRAP(glEnd());

@@ -6,6 +6,9 @@
 #include "glhelper.h"
 #include "maths.h"
 #include "draw_state.h"
+#include <algorithm>
+#include <limits>
+#include <cmath>
 
 void WRAP(glBegin(GLenum mode))
 {
@@ -17,8 +20,11 @@ void WRAP(glBegin(GLenum mode))
     
     globals->render.vertices.clear();
     globals->render.colors.clear();
-    globals->render.texcoords.clear();
+    for(auto& coords : globals->render.texcoords) coords.clear();
     globals->render.normals.clear();
+    globals->render.secondaryColors.clear();
+    globals->render.fogCoords.clear();
+    globals->render.materialValues.clear();
 }
 
 void WRAP(glEnd())
@@ -31,17 +37,20 @@ void WRAP(glEnd())
     draw_state_t saved;
     globals->render.begin = false;
     
-    TransformFixedVerts(); // also draws.
+    if(!globals->gl.conditionalDiscard) TransformFixedVerts();
     glUseProgram(globals->gl.activeProgram); // restore program
     
     globals->render.vertices.clear();
     globals->render.colors.clear();
-    globals->render.texcoords.clear();
+    for(auto& coords : globals->render.texcoords) coords.clear();
     globals->render.normals.clear();
+    globals->render.secondaryColors.clear();
+    globals->render.fogCoords.clear();
+    globals->render.materialValues.clear();
 }
 
-void WRAP(glColor3f(GLfloat r, GLfloat g, GLfloat b))                     { DLREC(WRAP(glColor3f(r,g,b)));      globals->render.color = {r, g, b, 1.0f}; }
-void WRAP(glColor4f(GLfloat r, GLfloat g, GLfloat b, GLfloat a))          { DLREC(WRAP(glColor4f(r,g,b,a)));    globals->render.color = {r, g, b, a}; }
+void WRAP(glColor3f(GLfloat r, GLfloat g, GLfloat b))                     { DLREC(WRAP(glColor3f(r,g,b)));      globals->render.color = {r, g, b, 1.0f}; UpdateColorMaterial(); }
+void WRAP(glColor4f(GLfloat r, GLfloat g, GLfloat b, GLfloat a))          { DLREC(WRAP(glColor4f(r,g,b,a)));    globals->render.color = {r, g, b, a}; UpdateColorMaterial(); }
 void WRAP(glColor3b(GLbyte r, GLbyte g, GLbyte b))                         { WRAP(glColor3f(b2f(r),b2f(g),b2f(b))); }
 void WRAP(glColor3d(GLdouble r, GLdouble g, GLdouble b))                   { WRAP(glColor3f((float)r,(float)g,(float)b)); }
 void WRAP(glColor3i(GLint r, GLint g, GLint b))                            { WRAP(glColor3f(i2f(r),i2f(g),i2f(b))); }
@@ -89,14 +98,32 @@ void WRAP(glNormal3fv(const GLfloat* v))   { WRAP(glNormal3f(v[0],v[1],v[2])); }
 void WRAP(glNormal3iv(const GLint* v))     { WRAP(glNormal3i(v[0],v[1],v[2])); }
 void WRAP(glNormal3sv(const GLshort* v))   { WRAP(glNormal3s(v[0],v[1],v[2])); }
 
+static void CaptureMaterial()
+{
+    if(!globals->ff.lightingEnabled || globals->gl.activeProgram) return;
+    for(const auto& material : globals->ff.materials)
+    {
+        auto& values = globals->render.materialValues;
+        values.push_back(*(const vector4_t*)material.ambient);
+        values.push_back(*(const vector4_t*)material.diffuse);
+        values.push_back(*(const vector4_t*)material.specular);
+        values.push_back(*(const vector4_t*)material.emission);
+        values.push_back({material.shininess,0,0,0});
+    }
+}
+
 void WRAP(glVertex3f(GLfloat x, GLfloat y, GLfloat z))
 {
     DLREC(WRAP(glVertex3f(x, y, z)));
     if(!globals->render.begin) return;
     globals->render.vertices.push_back({x, y, z, 1});
     globals->render.colors.push_back(globals->render.color);
-    globals->render.texcoords.push_back(globals->render.texcoord);
+    globals->render.texcoords[0].push_back(globals->render.texcoord);
+    for(int i = 1; i < 8; ++i) globals->render.texcoords[i].push_back(globals->render.multiTexcoord[i-1]);
     globals->render.normals.push_back(globals->render.normal);
+    globals->render.secondaryColors.push_back(globals->render.secondaryColor);
+    globals->render.fogCoords.push_back(globals->render.fogCoord);
+    CaptureMaterial();
 }
 void WRAP(glVertex2f(GLfloat x, GLfloat y))   { WRAP(glVertex3f(x, y, 0.0f)); }
 void WRAP(glVertex2i(GLint x, GLint y))        { WRAP(glVertex3f((float)x,(float)y, 0.0f)); }
@@ -111,8 +138,12 @@ void WRAP(glVertex4f(GLfloat x, GLfloat y, GLfloat z, GLfloat w))
     if(!globals->render.begin) return;
     globals->render.vertices.push_back({x,y,z,w});
     globals->render.colors.push_back(globals->render.color);
-    globals->render.texcoords.push_back(globals->render.texcoord);
+    globals->render.texcoords[0].push_back(globals->render.texcoord);
+    for(int i = 1; i < 8; ++i) globals->render.texcoords[i].push_back(globals->render.multiTexcoord[i-1]);
     globals->render.normals.push_back(globals->render.normal);
+    globals->render.secondaryColors.push_back(globals->render.secondaryColor);
+    globals->render.fogCoords.push_back(globals->render.fogCoord);
+    CaptureMaterial();
 }
 void WRAP(glVertex4d(GLdouble x, GLdouble y, GLdouble z, GLdouble w)) { WRAP(glVertex4f((float)x,(float)y,(float)z,(float)w)); }
 void WRAP(glVertex4i(GLint x, GLint y, GLint z, GLint w))             { WRAP(glVertex4f((float)x,(float)y,(float)z,(float)w)); }
@@ -133,7 +164,7 @@ void WRAP(glVertex4sv(const GLshort* v))  { WRAP(glVertex4s(v[0],v[1],v[2],v[3])
 void WRAP(glTexCoord2f(GLfloat s, GLfloat t))
 {
     DLREC(WRAP(glTexCoord2f(s,t)));
-    globals->render.texcoord = { s, t };
+    globals->render.texcoord = { s, t, 0, 1 };
 }
 void WRAP(glTexCoord1f(GLfloat s))                   { WRAP(glTexCoord2f(s, 0.0f)); }
 void WRAP(glTexCoord1d(GLdouble s))                  { WRAP(glTexCoord2f((float)s, 0.0f)); }
@@ -142,14 +173,18 @@ void WRAP(glTexCoord1s(GLshort s))                   { WRAP(glTexCoord2f((float)
 void WRAP(glTexCoord2d(GLdouble s, GLdouble t))      { WRAP(glTexCoord2f((float)s,(float)t)); }
 void WRAP(glTexCoord2i(GLint s, GLint t))            { WRAP(glTexCoord2f((float)s,(float)t)); }
 void WRAP(glTexCoord2s(GLshort s, GLshort t))        { WRAP(glTexCoord2f((float)s,(float)t)); }
-void WRAP(glTexCoord3f(GLfloat s, GLfloat t, GLfloat r))  { WRAP(glTexCoord2f(s,t)); /* r dropped */ }
-void WRAP(glTexCoord3d(GLdouble s, GLdouble t, GLdouble r)){ WRAP(glTexCoord2f((float)s,(float)t)); }
-void WRAP(glTexCoord3i(GLint s, GLint t, GLint r))         { WRAP(glTexCoord2f((float)s,(float)t)); }
-void WRAP(glTexCoord3s(GLshort s, GLshort t, GLshort r))   { WRAP(glTexCoord2f((float)s,(float)t)); }
-void WRAP(glTexCoord4f(GLfloat s, GLfloat t, GLfloat r, GLfloat q)) { WRAP(glTexCoord2f(s,t)); }
-void WRAP(glTexCoord4d(GLdouble s, GLdouble t, GLdouble r, GLdouble q)){ WRAP(glTexCoord2f((float)s,(float)t)); }
-void WRAP(glTexCoord4i(GLint s, GLint t, GLint r, GLint q))           { WRAP(glTexCoord2f((float)s,(float)t)); }
-void WRAP(glTexCoord4s(GLshort s, GLshort t, GLshort r, GLshort q))   { WRAP(glTexCoord2f((float)s,(float)t)); }
+void WRAP(glTexCoord3f(GLfloat s, GLfloat t, GLfloat r))  { WRAP(glTexCoord4f(s,t,r,1)); }
+void WRAP(glTexCoord3d(GLdouble s, GLdouble t, GLdouble r)){ WRAP(glTexCoord4f((float)s,(float)t,(float)r,1)); }
+void WRAP(glTexCoord3i(GLint s, GLint t, GLint r))         { WRAP(glTexCoord4f((float)s,(float)t,(float)r,1)); }
+void WRAP(glTexCoord3s(GLshort s, GLshort t, GLshort r))   { WRAP(glTexCoord4f((float)s,(float)t,(float)r,1)); }
+void WRAP(glTexCoord4f(GLfloat s, GLfloat t, GLfloat r, GLfloat q))
+{
+    DLREC(WRAP(glTexCoord4f(s,t,r,q)));
+    globals->render.texcoord = {s,t,r,q};
+}
+void WRAP(glTexCoord4d(GLdouble s, GLdouble t, GLdouble r, GLdouble q)){ WRAP(glTexCoord4f((float)s,(float)t,(float)r,(float)q)); }
+void WRAP(glTexCoord4i(GLint s, GLint t, GLint r, GLint q))           { WRAP(glTexCoord4f((float)s,(float)t,(float)r,(float)q)); }
+void WRAP(glTexCoord4s(GLshort s, GLshort t, GLshort r, GLshort q))   { WRAP(glTexCoord4f((float)s,(float)t,(float)r,(float)q)); }
 void WRAP(glTexCoord1fv(const GLfloat* v))  { WRAP(glTexCoord1f(v[0])); }
 void WRAP(glTexCoord2fv(const GLfloat* v))  { WRAP(glTexCoord2f(v[0],v[1])); }
 void WRAP(glTexCoord2dv(const GLdouble* v)) { WRAP(glTexCoord2d(v[0],v[1])); }
@@ -288,28 +323,34 @@ void WRAP(glPolygonMode(GLenum face, GLenum mode))
 
 void WRAP(glEnableClientState(GLenum array))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
     if(array == GL_VERTEX_ARRAY)        globals->client.vertexArrayEnabled = true;
     else if(array == GL_COLOR_ARRAY)    globals->client.colorArrayEnabled = true;
     else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoord[globals->client.clientActiveTextureUnit].enabled = true;
     else if(array == GL_NORMAL_ARRAY)   globals->client.normalArrayEnabled = true;
+    else if(array == 0x8457) globals->client.fogCoordArrayEnabled = true;
+    else if(array == 0x845E) globals->client.secondaryColorArrayEnabled = true;
+    else SetError(GL_INVALID_ENUM);
 }
 
 void WRAP(glDisableClientState(GLenum array))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(array == 0x8457) { globals->client.fogCoordArrayEnabled = false; return; }
+    if(array == 0x845E) { globals->client.secondaryColorArrayEnabled = false; return; }
     if(array == GL_VERTEX_ARRAY)        globals->client.vertexArrayEnabled = false;
     else if(array == GL_COLOR_ARRAY)    globals->client.colorArrayEnabled = false;
     else if(array == GL_TEXTURE_COORD_ARRAY) globals->client.texCoord[globals->client.clientActiveTextureUnit].enabled = false;
-    else if(array == GL_NORMAL_ARRAY)
-    {
-        globals->client.normalArrayEnabled = false;
-        glVertexAttrib3f(2, 0.0f, 0.0f, 1.0f); 
-    }
+    else if(array == GL_NORMAL_ARRAY) globals->client.normalArrayEnabled = false;
+    else SetError(GL_INVALID_ENUM);
 }
 
 void WRAP(glVertexPointer(GLint size, GLenum type, GLsizei stride, const void *ptr))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
     if(size < 2 || size > 4 || stride < 0) { SetError(GL_INVALID_VALUE); return; }
-    if(!GetGLTypeSize(type)) { SetError(GL_INVALID_ENUM); return; }
+    if(type != GL_SHORT && type != GL_INT && type != GL_FLOAT && type != GL_HALF_FLOAT && type != 0x140A && !IsPackedVertex(type)) { SetError(GL_INVALID_ENUM); return; }
+    if(IsPackedVertex(type) && size != 4) { SetError(GL_INVALID_OPERATION); return; }
     GLint buffer;
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
     globals->client.vertexSize   = size;
@@ -321,8 +362,10 @@ void WRAP(glVertexPointer(GLint size, GLenum type, GLsizei stride, const void *p
 
 void WRAP(glColorPointer(GLint size, GLenum type, GLsizei stride, const void *ptr))
 {
-    if(size < 3 || size > 4 || stride < 0) { SetError(GL_INVALID_VALUE); return; }
-    if(!GetGLTypeSize(type)) { SetError(GL_INVALID_ENUM); return; }
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if((size != 3 && size != 4 && size != 0x80E1) || stride < 0) { SetError(GL_INVALID_VALUE); return; }
+    if(!GetGLTypeSize(type) && !IsPackedVertex(type)) { SetError(GL_INVALID_ENUM); return; }
+    if((IsPackedVertex(type) && size == 3) || (size == 0x80E1 && type != GL_UNSIGNED_BYTE && !IsPackedVertex(type))) { SetError(GL_INVALID_OPERATION); return; }
     GLint buffer;
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
     globals->client.colorSize   = size;
@@ -334,8 +377,10 @@ void WRAP(glColorPointer(GLint size, GLenum type, GLsizei stride, const void *pt
 
 void WRAP(glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const void *ptr))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
     if(size < 1 || size > 4 || stride < 0) { SetError(GL_INVALID_VALUE); return; }
-    if(!GetGLTypeSize(type)) { SetError(GL_INVALID_ENUM); return; }
+    if(type != GL_SHORT && type != GL_INT && type != GL_FLOAT && type != GL_HALF_FLOAT && type != 0x140A && !IsPackedVertex(type)) { SetError(GL_INVALID_ENUM); return; }
+    if(IsPackedVertex(type) && size != 4) { SetError(GL_INVALID_OPERATION); return; }
     GLint buffer;
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
     texcoord_state_t& state = globals->client.texCoord[globals->client.clientActiveTextureUnit];
@@ -348,8 +393,9 @@ void WRAP(glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const void 
 
 void WRAP(glNormalPointer(GLenum type, GLsizei stride, const void *ptr))
 {
-    if(false || stride < 0) { SetError(GL_INVALID_VALUE); return; }
-    if(!GetGLTypeSize(type)) { SetError(GL_INVALID_ENUM); return; }
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(stride < 0) { SetError(GL_INVALID_VALUE); return; }
+    if(type != GL_BYTE && type != GL_SHORT && type != GL_INT && type != GL_FLOAT && type != GL_HALF_FLOAT && type != 0x140A && !IsPackedVertex(type)) { SetError(GL_INVALID_ENUM); return; }
     GLint buffer;
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
     globals->client.normalType   = type;
@@ -360,14 +406,21 @@ void WRAP(glNormalPointer(GLenum type, GLsizei stride, const void *ptr))
 
 void WRAP(glLightf(GLenum light, GLenum pname, GLfloat param))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(pname < GL_SPOT_EXPONENT || pname > GL_QUADRATIC_ATTENUATION) { SetError(GL_INVALID_ENUM); return; }
     WRAP(glLightfv(light, pname, &param));
 }
 
 void WRAP(glLightfv(GLenum light, GLenum pname, const GLfloat *params))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(light < GL_LIGHT0 || light > GL_LIGHT7 || pname < GL_AMBIENT || pname > GL_QUADRATIC_ATTENUATION) { SetError(GL_INVALID_ENUM); return; }
     DLREC_DATA(params, (pname == GL_SPOT_DIRECTION ? 3 : pname >= GL_AMBIENT && pname <= GL_POSITION ? 4 : 1), WRAP(glLightfv(light, pname, _values.data())));
     int idx = light - GL_LIGHT0;
-    if(idx < 0 || idx > 7) return;
+    if(idx < 0 || idx > 7 || pname < GL_AMBIENT || pname > GL_QUADRATIC_ATTENUATION) { SetError(GL_INVALID_ENUM); return; }
+    if((pname == GL_SPOT_EXPONENT && (params[0] < 0 || params[0] > 128)) ||
+       (pname == GL_SPOT_CUTOFF && (params[0] < 0 || (params[0] > 90 && params[0] != 180))) ||
+       (pname >= GL_CONSTANT_ATTENUATION && params[0] < 0)) { SetError(GL_INVALID_VALUE); return; }
 
     if(pname == 0x1200)       // GL_AMBIENT
         memcpy(&globals->ff.lights[idx].ambient, params, 4 * sizeof(float));
@@ -378,7 +431,13 @@ void WRAP(glLightfv(GLenum light, GLenum pname, const GLfloat *params))
     else if(pname == 0x1203)  // GL_POSITION
         MultiplyMatrix2(globals->matrix.modelview.Current().m, params, &globals->ff.lights[idx].pos.x);
     else if(pname == 0x1204)  // GL_SPOT_DIRECTION
-        memcpy(&globals->ff.lights[idx].dir, params, 3 * sizeof(float));
+    {
+        const float* matrix = globals->matrix.modelview.Current().m;
+        auto& direction = globals->ff.lights[idx].dir;
+        direction.x = matrix[0] * params[0] + matrix[4] * params[1] + matrix[8] * params[2];
+        direction.y = matrix[1] * params[0] + matrix[5] * params[1] + matrix[9] * params[2];
+        direction.z = matrix[2] * params[0] + matrix[6] * params[1] + matrix[10] * params[2];
+    }
     else if(pname == 0x1205)  // GL_SPOT_EXPONENT
         globals->ff.lights[idx].spotExp = params[0];
     else if(pname == 0x1206)  // GL_SPOT_CUTOFF
@@ -393,46 +452,58 @@ void WRAP(glLightfv(GLenum light, GLenum pname, const GLfloat *params))
 
 void WRAP(glLightModelf(GLenum pname, GLfloat param))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(pname == GL_LIGHT_MODEL_AMBIENT) { SetError(GL_INVALID_ENUM); return; }
     WRAP(glLightModelfv(pname, &param));
 }
 
 void WRAP(glLightModelfv(GLenum pname, const GLfloat* params))
 {
+    DLREC_DATA(params, (pname == GL_LIGHT_MODEL_AMBIENT ? 4 : 1), WRAP(glLightModelfv(pname, _values.data())));
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
     if(pname == GL_LIGHT_MODEL_AMBIENT)
         memcpy(&globals->render.ambient, params, 4 * sizeof(float));
     else if(pname == GL_LIGHT_MODEL_TWO_SIDE)
         globals->ff.lightModelTwoSide = (params[0] != 0.0f);
     else if(pname == 0x0B51) // GL_LIGHT_MODEL_LOCAL_VIEWER
         globals->ff.lightModelLocalViewer = (params[0] != 0.0f);
+    else if(pname == 0x81F8)
+    {
+        if(params[0] != 0x81F9 && params[0] != 0x81FA) { SetError(GL_INVALID_ENUM); return; }
+        globals->ff.lightModelColorControl = (GLenum)params[0];
+    }
+    else SetError(GL_INVALID_ENUM);
 }
 
 void WRAP(glLightModeli(GLenum pname, GLint param))
 {
-    if(pname == GL_LIGHT_MODEL_TWO_SIDE)
-        globals->ff.lightModelTwoSide = (param != 0);
-    else if(pname == 0x0B51) // GL_LIGHT_MODEL_LOCAL_VIEWER
-        globals->ff.lightModelLocalViewer = (param != 0);
+    WRAP(glLightModelf(pname, (GLfloat)param));
 }
 
 void WRAP(glMaterialf(GLenum face, GLenum pname, GLfloat param))
 {
-    DLREC(WRAP(glMaterialf(face, pname, param)));
-    if(pname == 0x1601) globals->ff.matShininess = param; // GL_SHININESS
+    if(pname != GL_SHININESS) { SetError(GL_INVALID_ENUM); return; }
+    WRAP(glMaterialfv(face, pname, &param));
 }
 
 void WRAP(glMaterialfv(GLenum face, GLenum pname, const GLfloat *params))
 {
-    DLREC_DATA(params, (pname == GL_SHININESS ? 1 : 4), WRAP(glMaterialfv(face, pname, _values.data())));
-    if(pname == 0x1200)       memcpy(globals->ff.matAmbient,  params, 4 * sizeof(float)); // GL_AMBIENT
-    else if(pname == 0x1201)  memcpy(globals->ff.matDiffuse,  params, 4 * sizeof(float)); // GL_DIFFUSE
-    else if(pname == 0x1202)  memcpy(globals->ff.matSpecular, params, 4 * sizeof(float)); // GL_SPECULAR
-    else if(pname == 0x1600)  memcpy(globals->ff.matEmission, params, 4 * sizeof(float)); // GL_EMISSION
-    else if(pname == 0x1601)  globals->ff.matShininess = params[0];                        // GL_SHININESS
-    else if(pname == 0x1602)  // GL_AMBIENT_AND_DIFFUSE
+    if(face != GL_FRONT && face != GL_BACK && face != GL_FRONT_AND_BACK) { SetError(GL_INVALID_ENUM); return; }
+    if(pname != GL_AMBIENT && pname != GL_DIFFUSE && pname != GL_SPECULAR && pname != GL_EMISSION && pname != GL_SHININESS && pname != GL_AMBIENT_AND_DIFFUSE && pname != 0x1603) { SetError(GL_INVALID_ENUM); return; }
+    DLREC_DATA(params, (pname == GL_SHININESS ? 1 : pname == 0x1603 ? 3 : 4), WRAP(glMaterialfv(face, pname, _values.data())));
+    if(pname == GL_SHININESS && (params[0] < 0 || params[0] > 128)) { SetError(GL_INVALID_VALUE); return; }
+    for(int i = 0; i < 2; ++i)
     {
-        memcpy(globals->ff.matAmbient, params, 4 * sizeof(float));
-        memcpy(globals->ff.matDiffuse, params, 4 * sizeof(float));
+        if(face == (i ? GL_FRONT : GL_BACK)) continue;
+        auto& material = globals->ff.materials[i];
+        if(pname == GL_AMBIENT || pname == GL_AMBIENT_AND_DIFFUSE) memcpy(material.ambient, params, 4 * sizeof(float));
+        if(pname == GL_DIFFUSE || pname == GL_AMBIENT_AND_DIFFUSE) memcpy(material.diffuse, params, 4 * sizeof(float));
+        if(pname == GL_SPECULAR) memcpy(material.specular, params, 4 * sizeof(float));
+        if(pname == GL_EMISSION) memcpy(material.emission, params, 4 * sizeof(float));
+        if(pname == GL_SHININESS) material.shininess = params[0];
+        if(pname == 0x1603) memcpy(material.indexes, params, 3 * sizeof(float));
     }
+    UpdateColorMaterial();
 }
 
 void WRAP(glMateriali(GLenum face, GLenum pname, GLint param))
@@ -443,19 +514,22 @@ void WRAP(glMateriali(GLenum face, GLenum pname, GLint param))
 
 void WRAP(glMaterialiv(GLenum face, GLenum pname, const GLint *params))
 {
+    if(face != GL_FRONT && face != GL_BACK && face != GL_FRONT_AND_BACK) { SetError(GL_INVALID_ENUM); return; }
+    if(pname != GL_AMBIENT && pname != GL_DIFFUSE && pname != GL_SPECULAR && pname != GL_EMISSION && pname != GL_SHININESS && pname != GL_AMBIENT_AND_DIFFUSE && pname != 0x1603) { SetError(GL_INVALID_ENUM); return; }
     float fp[4] = {};
-    for(int i = 0; i < (pname == GL_SHININESS ? 1 : 4); ++i) fp[i] = pname == GL_SHININESS ? (float)params[i] : i2f(params[i]);
+    for(int i = 0; i < (pname == GL_SHININESS ? 1 : pname == 0x1603 ? 3 : 4); ++i) fp[i] = pname == GL_SHININESS || pname == 0x1603 ? (float)params[i] : i2f(params[i]);
     WRAP(glMaterialfv(face, pname, fp));
 }
 
 void WRAP(glFogf(GLenum pname, GLfloat param))
 {
     DLREC(WRAP(glFogf(pname, param)));
-    if(pname == GL_FOG_MODE) { WRAP(glFogi(pname, (GLint)param)); return; }
+    if(pname == GL_FOG_MODE || pname == 0x8450) { WRAP(glFogi(pname, (GLint)param)); return; }
     if(pname == GL_FOG_DENSITY && param < 0) { SetError(GL_INVALID_VALUE); return; }
     if(pname == 0x0B62)       globals->ff.fogDensity = param; // GL_FOG_DENSITY
     else if(pname == 0x0B63)  globals->ff.fogStart   = param; // GL_FOG_START
     else if(pname == 0x0B64)  globals->ff.fogEnd     = param; // GL_FOG_END
+    else SetError(GL_INVALID_ENUM);
 }
 
 void WRAP(glFogfv(GLenum pname, const GLfloat *params))
@@ -468,8 +542,17 @@ void WRAP(glFogfv(GLenum pname, const GLfloat *params))
 void WRAP(glFogi(GLenum pname, GLint param))
 {
     DLREC(WRAP(glFogi(pname, param)));
-    if(pname == 0x0B65) // GL_FOG_MODE
+    if(pname == 0x0B65)
+    {
+        if(param != GL_LINEAR && param != GL_EXP && param != GL_EXP2) { SetError(GL_INVALID_ENUM); return; }
         globals->ff.fogMode = param;
+    }
+    else if(pname == 0x8450)
+    {
+        if(param != 0x8451 && param != 0x8452) { SetError(GL_INVALID_ENUM); return; }
+        globals->ff.fogSource = param;
+    }
+    else WRAP(glFogf(pname, (GLfloat)param));
 }
 
 void WRAP(glLogicOp(GLenum opcode))
@@ -480,6 +563,7 @@ void WRAP(glLogicOp(GLenum opcode))
 
 void WRAP(glClientActiveTexture(GLenum texture))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
     if(texture < GL_TEXTURE0 || texture >= GL_TEXTURE0 + 8) { SetError(GL_INVALID_ENUM); return; }
     globals->client.clientActiveTextureUnit = texture - GL_TEXTURE0;
 }
@@ -487,23 +571,48 @@ void WRAP(glClientActiveTexture(GLenum texture))
 void WRAP(glTexEnvi(GLenum target, GLenum pname, GLint param))
 {
     DLREC(WRAP(glTexEnvi(target, pname, param)));
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
     if(globals->ff.activeTextureUnit >= 8) { SetError(GL_INVALID_OPERATION); return; }
-    texcoord_state_t& state = globals->client.texCoord[globals->ff.activeTextureUnit];
-    if(target == GL_TEXTURE_ENV)
+    if(target == 0x8861)
     {
-        if(pname == GL_TEXTURE_ENV_MODE)
-        {
-            if(param == GL_REPLACE)       state.texCoordBlendLogic = 0;
-            else if(param == GL_ADD)      state.texCoordBlendLogic = 2;
-            else if(param == GL_BLEND)    state.texCoordBlendLogic = 3;
-            else if(param == GL_DECAL)    state.texCoordBlendLogic = 4;
-            else                          state.texCoordBlendLogic = 1; // GL_MODULATE
-        }
+        if(pname != 0x8862 || (param != GL_FALSE && param != GL_TRUE)) { SetError(GL_INVALID_ENUM); return; }
+        globals->ff.pointCoordReplace[globals->ff.activeTextureUnit] = param != GL_FALSE;
+        return;
     }
+    if(target != GL_TEXTURE_ENV) { SetError(GL_INVALID_ENUM); return; }
+    auto& state = globals->ff.texEnv[globals->ff.activeTextureUnit];
+    if(pname == GL_TEXTURE_ENV_MODE)
+    {
+        if(param != GL_REPLACE && param != GL_MODULATE && param != GL_ADD && param != GL_BLEND && param != GL_DECAL && param != 0x8570) { SetError(GL_INVALID_ENUM); return; }
+        state.mode = param;
+    }
+    else if(pname == 0x8571 || pname == 0x8572)
+    {
+        if(param != GL_REPLACE && param != GL_MODULATE && param != GL_ADD && param != 0x8574 && param != 0x8575 && param != GL_SUBTRACT && !(pname == 0x8571 && (param == 0x86AE || param == 0x86AF))) { SetError(GL_INVALID_ENUM); return; }
+        (pname == 0x8571 ? state.combineRGB : state.combineAlpha) = param;
+    }
+    else if(pname == 0x8573 || pname == 0x0D1C)
+    {
+        if(param != 1 && param != 2 && param != 4) { SetError(GL_INVALID_VALUE); return; }
+        (pname == 0x8573 ? state.scaleRGB : state.scaleAlpha) = param;
+    }
+    else if((pname >= 0x8580 && pname <= 0x8582) || (pname >= 0x8588 && pname <= 0x858A))
+    {
+        if(param != GL_TEXTURE && param != 0x8576 && param != 0x8577 && param != 0x8578 && !(param >= GL_TEXTURE0 && param < GL_TEXTURE0 + 8)) { SetError(GL_INVALID_ENUM); return; }
+        (pname >= 0x8588 ? state.sourceAlpha[pname-0x8588] : state.sourceRGB[pname-0x8580]) = param;
+    }
+    else if((pname >= 0x8590 && pname <= 0x8592) || (pname >= 0x8598 && pname <= 0x859A))
+    {
+        if(param != GL_SRC_ALPHA && param != GL_ONE_MINUS_SRC_ALPHA && !(pname <= 0x8592 && (param == GL_SRC_COLOR || param == GL_ONE_MINUS_SRC_COLOR))) { SetError(GL_INVALID_ENUM); return; }
+        (pname >= 0x8598 ? state.operandAlpha[pname-0x8598] : state.operandRGB[pname-0x8590]) = param;
+    }
+    else SetError(GL_INVALID_ENUM);
 }
 
 void WRAP(glTexEnvf(GLenum target, GLenum pname, GLfloat param))
 {
+    if(target == 0x8861 && pname == 0x8862 && param != GL_FALSE && param != GL_TRUE) { SetError(GL_INVALID_ENUM); return; }
+    if((pname == 0x8573 || pname == 0x0D1C) && param != 1 && param != 2 && param != 4) { SetError(GL_INVALID_VALUE); return; }
     WRAP(glTexEnvi(target, pname, (GLint)param));
 }
 
@@ -511,20 +620,21 @@ void WRAP(glTexEnvfv(GLenum target, GLenum pname, const GLfloat *p))
 {
     DLREC_DATA(p, (pname == GL_TEXTURE_ENV_COLOR ? 4 : 1), WRAP(glTexEnvfv(target, pname, _values.data())));
     if(globals->ff.activeTextureUnit >= 8) { SetError(GL_INVALID_OPERATION); return; }
-    texcoord_state_t& state = globals->client.texCoord[globals->ff.activeTextureUnit];
+    auto& state = globals->ff.texEnv[globals->ff.activeTextureUnit];
     if(target == GL_TEXTURE_ENV && pname == GL_TEXTURE_ENV_COLOR)
-        state.texCoordColor = { p[0], p[1], p[2], p[3] };
+        state.color = { p[0], p[1], p[2], p[3] };
+    else WRAP(glTexEnvf(target, pname, p[0]));
 }
 
 void WRAP(glTexEnviv(GLenum target, GLenum pname, const GLint *params))
 {
-    if(pname == GL_TEXTURE_ENV_MODE)
+    if(pname != GL_TEXTURE_ENV_COLOR)
     {
         WRAP(glTexEnvi(target, pname, params[0]));
     }
     else
     {
-        float fp[4] = { params[0]/255.f, params[1]/255.f, params[2]/255.f, params[3]/255.f };
+        float fp[4] = { i2f(params[0]), i2f(params[1]), i2f(params[2]), i2f(params[3]) };
         WRAP(glTexEnvfv(target, pname, fp));
     }
 }
@@ -532,90 +642,133 @@ void WRAP(glTexEnviv(GLenum target, GLenum pname, const GLint *params))
 void WRAP(glColorMaterial(GLenum face, GLenum mode))
 {
     DLREC(WRAP(glColorMaterial(face, mode)));
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(face != GL_FRONT && face != GL_BACK && face != GL_FRONT_AND_BACK) { SetError(GL_INVALID_ENUM); return; }
+    if(mode != GL_AMBIENT && mode != GL_DIFFUSE && mode != GL_AMBIENT_AND_DIFFUSE && mode != GL_SPECULAR && mode != GL_EMISSION) { SetError(GL_INVALID_ENUM); return; }
     globals->ff.colorMaterialFace = face;
     globals->ff.colorMaterialMode = mode;
+    UpdateColorMaterial();
+}
+
+void UpdateColorMaterial()
+{
+    if(!globals->render.colorMaterial) return;
+    float color[4] = {globals->render.color.x, globals->render.color.y, globals->render.color.z, globals->render.color.w};
+    for(float& value : color) value = std::max(0.0f, std::min(1.0f, value));
+    GLenum mode = globals->ff.colorMaterialMode;
+    for(int i = 0; i < 2; ++i)
+    {
+        if(globals->ff.colorMaterialFace == (i ? GL_FRONT : GL_BACK)) continue;
+        auto& material = globals->ff.materials[i];
+        if(mode == GL_AMBIENT || mode == GL_AMBIENT_AND_DIFFUSE) memcpy(material.ambient, color, sizeof(color));
+        if(mode == GL_DIFFUSE || mode == GL_AMBIENT_AND_DIFFUSE) memcpy(material.diffuse, color, sizeof(color));
+        if(mode == GL_SPECULAR) memcpy(material.specular, color, sizeof(color));
+        if(mode == GL_EMISSION) memcpy(material.emission, color, sizeof(color));
+    }
+}
+
+static bool ReadLegacyElement(GLint index, GLint size, GLenum type, GLsizei stride, GLuint buffer, const void* pointer, bool normalized, GLfloat* values)
+{
+    bool bgra = size == 0x80E1;
+    size_t scalar = GetGLTypeSize(type), bytes = GetArrayElementSize(size, type), step = stride ? stride : bytes;
+    if(!bytes || (!buffer && !pointer)) { SetError(GL_INVALID_OPERATION); return false; }
+    if(bgra) size = 4;
+    size_t base = (size_t)pointer, limit = buffer ? (size_t)std::numeric_limits<GLintptr>::max() : SIZE_MAX;
+    if(base > limit || bytes > limit - base || (size_t)index > (limit - base - bytes) / step) { SetError(GL_INVALID_OPERATION); return false; }
+    size_t offset = (size_t)index * step;
+    GLint previous = 0;
+    const char* data = (const char*)pointer;
+    if(buffer)
+    {
+        glGetIntegerv(GL_COPY_READ_BUFFER_BINDING, &previous);
+        glBindBuffer(GL_COPY_READ_BUFFER, buffer);
+        data = (const char*)glMapBufferRange(GL_COPY_READ_BUFFER, (GLintptr)(base + offset), bytes, GL_MAP_READ_BIT);
+        if(!data) { glBindBuffer(GL_COPY_READ_BUFFER, previous); return false; }
+    }
+    else data += offset;
+    auto read = [&](auto zero, int component) { decltype(zero) value; memcpy(&value, data + component * scalar, scalar); return value; };
+    if(IsPackedVertex(type))
+    {
+        GLuint value;
+        memcpy(&value, data, sizeof(value));
+        UnpackVertex(type, value, normalized, values);
+    }
+    else for(int c = 0; c < size; ++c)
+    {
+        switch(type)
+        {
+            case GL_BYTE: values[c] = normalized ? b2f(read(GLbyte{}, c)) : read(GLbyte{}, c); break;
+            case GL_UNSIGNED_BYTE: values[c] = normalized ? ub2f(read(GLubyte{}, c)) : read(GLubyte{}, c); break;
+            case GL_SHORT: values[c] = normalized ? s2f(read(GLshort{}, c)) : read(GLshort{}, c); break;
+            case GL_UNSIGNED_SHORT: values[c] = normalized ? us2f(read(GLushort{}, c)) : read(GLushort{}, c); break;
+            case GL_INT: values[c] = normalized ? i2f(read(GLint{}, c)) : (GLfloat)read(GLint{}, c); break;
+            case GL_UNSIGNED_INT: values[c] = normalized ? ui2f(read(GLuint{}, c)) : (GLfloat)read(GLuint{}, c); break;
+            case GL_FLOAT: values[c] = read(GLfloat{}, c); break;
+            case GL_HALF_FLOAT:
+            {
+                GLushort value = read(GLushort{}, c);
+                int exponent = (value >> 10) & 31, mantissa = value & 1023;
+                float result = exponent == 31 ? (mantissa ? std::numeric_limits<float>::quiet_NaN() : std::numeric_limits<float>::infinity()) : std::ldexp((float)(exponent ? mantissa + 1024 : mantissa), exponent ? exponent - 25 : -24);
+                values[c] = value & 0x8000 ? -result : result;
+                break;
+            }
+            case 0x140A: values[c] = (GLfloat)read(GLdouble{}, c); break;
+            default: values[c] = 0; break;
+        }
+    }
+    if(bgra) std::swap(values[0], values[2]);
+    if(buffer) { glUnmapBuffer(GL_COPY_READ_BUFFER); glBindBuffer(GL_COPY_READ_BUFFER, previous); }
+    return true;
 }
 
 void WRAP(glArrayElement(GLint i))
 {
     if(i < 0) { SetError(GL_INVALID_VALUE); return; }
+    const auto& client = globals->client;
+    GLfloat values[4];
+    if(client.secondaryColorArrayEnabled)
+    {
+        if(!ReadLegacyElement(i, client.secondaryColorSize, client.secondaryColorType, client.secondaryColorStride, client.secondaryColorBuffer, client.secondaryColorPtr, true, values)) return;
+        WRAP(glSecondaryColor3f(values[0], values[1], values[2]));
+    }
+    if(client.fogCoordArrayEnabled)
+    {
+        if(!ReadLegacyElement(i, 1, client.fogCoordType, client.fogCoordStride, client.fogCoordBuffer, client.fogCoordPtr, false, values)) return;
+        WRAP(glFogCoordf(values[0]));
+    }
 
-    // Normal
-    if(globals->client.normalArrayEnabled && globals->client.normalPtr)
+    if(client.normalArrayEnabled)
     {
-        const char* base = (const char*)globals->client.normalPtr;
-        GLsizei stride = globals->client.normalStride
-            ? globals->client.normalStride
-            : (3 * (GLsizei)GetGLTypeSize(globals->client.normalType));
-        const char* p = base + i * stride;
-        switch(globals->client.normalType)
-        {
-            case GL_FLOAT:  { const GLfloat*  v=(const GLfloat*)p;  WRAP(glNormal3f(v[0],v[1],v[2])); break; }
-            case 0x140A: { const GLdouble* v=(const GLdouble*)p; WRAP(glNormal3f((float)v[0],(float)v[1],(float)v[2])); break; }
-            case GL_BYTE:   { const GLbyte*   v=(const GLbyte*)p;   WRAP(glNormal3f(b2f(v[0]),b2f(v[1]),b2f(v[2]))); break; }
-            case GL_SHORT:  { const GLshort*  v=(const GLshort*)p;  WRAP(glNormal3f(s2f(v[0]),s2f(v[1]),s2f(v[2]))); break; }
-            case GL_INT:    { const GLint*    v=(const GLint*)p;    WRAP(glNormal3f(i2f(v[0]),i2f(v[1]),i2f(v[2]))); break; }
-            default: break;
-        }
+        if(!ReadLegacyElement(i, 3, client.normalType, client.normalStride, client.normalBuffer, client.normalPtr, true, values)) return;
+        WRAP(glNormal3f(values[0], values[1], values[2]));
     }
-    // Color
-    if(globals->client.colorArrayEnabled && globals->client.colorPtr)
+    if(client.colorArrayEnabled)
     {
-        const char* base = (const char*)globals->client.colorPtr;
-        GLsizei stride = globals->client.colorStride
-            ? globals->client.colorStride
-            : (globals->client.colorSize * (GLsizei)GetGLTypeSize(globals->client.colorType));
-        const char* p = base + i * stride;
-        int sz = globals->client.colorSize;
-        switch(globals->client.colorType)
-        {
-            case GL_FLOAT:         { const GLfloat*  v=(const GLfloat*)p;  WRAP(glColor4f(v[0],v[1],v[2],sz>3?v[3]:1.f)); break; }
-            case GL_UNSIGNED_BYTE: { const GLubyte*  v=(const GLubyte*)p;  WRAP(glColor4f(ub2f(v[0]),ub2f(v[1]),ub2f(v[2]),sz>3?ub2f(v[3]):1.f)); break; }
-            case GL_BYTE:          { const GLbyte*   v=(const GLbyte*)p;   WRAP(glColor4f(b2f(v[0]),b2f(v[1]),b2f(v[2]),sz>3?b2f(v[3]):1.f)); break; }
-            case GL_SHORT:         { const GLshort*  v=(const GLshort*)p;  WRAP(glColor4f(s2f(v[0]),s2f(v[1]),s2f(v[2]),sz>3?s2f(v[3]):1.f)); break; }
-            case GL_INT:           { const GLint*    v=(const GLint*)p;    WRAP(glColor4f(i2f(v[0]),i2f(v[1]),i2f(v[2]),sz>3?i2f(v[3]):1.f)); break; }
-            default: break;
-        }
+        values[3] = 1;
+        if(!ReadLegacyElement(i, client.colorSize, client.colorType, client.colorStride, client.colorBuffer, client.colorPtr, true, values)) return;
+        WRAP(glColor4f(values[0], values[1], values[2], values[3]));
     }
-    // TexCoord (unit 0)
+    for(int unit = 0; unit < 8; ++unit)
     {
-        texcoord_state_t& ts = globals->client.texCoord[0];
-        if(ts.enabled && ts.texCoordPtr)
-        {
-            const char* base = (const char*)ts.texCoordPtr;
-            GLsizei stride = ts.texCoordStride
-                ? ts.texCoordStride
-                : (ts.texCoordSize * (GLsizei)GetGLTypeSize(ts.texCoordType));
-            const char* p = base + i * stride;
-            if(ts.texCoordType == GL_FLOAT)
-            {
-                const GLfloat* v = (const GLfloat*)p;
-                WRAP(glTexCoord2f(v[0], ts.texCoordSize > 1 ? v[1] : 0.f));
-            }
-        }
+        const auto& state = client.texCoord[unit];
+        if(!state.enabled) continue;
+        values[1] = values[2] = 0;
+        values[3] = 1;
+        if(!ReadLegacyElement(i, state.texCoordSize, state.texCoordType, state.texCoordStride, state.texCoordBuffer, state.texCoordPtr, false, values)) return;
+        WRAP(glMultiTexCoord4f(GL_TEXTURE0 + unit, values[0], values[1], values[2], values[3]));
     }
-    // Vertex
-    if(globals->client.vertexArrayEnabled && globals->client.vertexPtr)
+    if(client.vertexArrayEnabled)
     {
-        const char* base = (const char*)globals->client.vertexPtr;
-        GLsizei stride = globals->client.vertexStride
-            ? globals->client.vertexStride
-            : (globals->client.vertexSize * (GLsizei)GetGLTypeSize(globals->client.vertexType));
-        const char* p = base + i * stride;
-        int sz = globals->client.vertexSize;
-        switch(globals->client.vertexType)
-        {
-            case GL_FLOAT:  { const GLfloat*  v=(const GLfloat*)p;  WRAP(glVertex3f(v[0],sz>1?v[1]:0.f,sz>2?v[2]:0.f)); break; }
-            case 0x140A: { const GLdouble* v=(const GLdouble*)p; WRAP(glVertex3f((float)v[0],sz>1?(float)v[1]:0.f,sz>2?(float)v[2]:0.f)); break; }
-            case GL_SHORT:  { const GLshort*  v=(const GLshort*)p;  WRAP(glVertex3f(v[0],sz>1?(float)v[1]:0.f,sz>2?(float)v[2]:0.f)); break; }
-            case GL_INT:    { const GLint*    v=(const GLint*)p;    WRAP(glVertex3f((float)v[0],sz>1?(float)v[1]:0.f,sz>2?(float)v[2]:0.f)); break; }
-            default: break;
-        }
+        values[2] = 0;
+        values[3] = 1;
+        if(!ReadLegacyElement(i, client.vertexSize, client.vertexType, client.vertexStride, client.vertexBuffer, client.vertexPtr, false, values)) return;
+        WRAP(glVertex4f(values[0], values[1], values[2], values[3]));
     }
 }
-
 void WRAP(glInterleavedArrays(GLenum format, GLsizei stride, const void* pointer))
 {
+    WRAP(glDisableClientState(0x8457));
+    WRAP(glDisableClientState(0x845E));
     // Disable all first
     WRAP(glDisableClientState(GL_VERTEX_ARRAY));
     WRAP(glDisableClientState(GL_NORMAL_ARRAY));
@@ -691,22 +844,18 @@ void WRAP(glInterleavedArrays(GLenum format, GLsizei stride, const void* pointer
     WRAP(glVertexPointer(L.vs, GL_FLOAT, stride, p + offset));
 }
 
-static inline void SetMultiTexCoord(GLenum unit, float s, float t)
+static inline void SetMultiTexCoord(GLenum unit, float s, float t, float r = 0, float q = 1)
 {
     int u = (int)(unit - GL_TEXTURE0);
-    if(u < 0 || u >= 8) return;
-    if(u == 0) globals->render.texcoord = { s, t };
-    // For units > 0 we store into the per-unit slot so multi-tex FFP works
-    globals->client.texCoord[u].texCoordPtr = nullptr; // mark as immediate
-    // We piggyback on texCoordColor.x/y for immediate-mode coords
-    globals->client.texCoord[u].texCoordColor.x = s;
-    globals->client.texCoord[u].texCoordColor.y = t;
+    if(u < 0 || u >= 8) { SetError(GL_INVALID_ENUM); return; }
+    if(u == 0) globals->render.texcoord = { s, t, r, q };
+    else globals->render.multiTexcoord[u-1] = { s, t, r, q };
 }
 
 void WRAP(glMultiTexCoord1f(GLenum t, GLfloat s))                              { DLREC(WRAP(glMultiTexCoord1f(t,s)));         SetMultiTexCoord(t,s,0); }
 void WRAP(glMultiTexCoord2f(GLenum t, GLfloat s, GLfloat r))                   { DLREC(WRAP(glMultiTexCoord2f(t,s,r)));       SetMultiTexCoord(t,s,r); }
-void WRAP(glMultiTexCoord3f(GLenum t, GLfloat s, GLfloat r, GLfloat q))        { DLREC(WRAP(glMultiTexCoord3f(t,s,r,q)));     SetMultiTexCoord(t,s,r); }
-void WRAP(glMultiTexCoord4f(GLenum t, GLfloat s, GLfloat r, GLfloat q, GLfloat w)){ DLREC(WRAP(glMultiTexCoord4f(t,s,r,q,w))); SetMultiTexCoord(t,s,r); }
+void WRAP(glMultiTexCoord3f(GLenum t, GLfloat s, GLfloat r, GLfloat q))        { DLREC(WRAP(glMultiTexCoord3f(t,s,r,q)));     SetMultiTexCoord(t,s,r,q); }
+void WRAP(glMultiTexCoord4f(GLenum t, GLfloat s, GLfloat r, GLfloat q, GLfloat w)){ DLREC(WRAP(glMultiTexCoord4f(t,s,r,q,w))); SetMultiTexCoord(t,s,r,q,w); }
 void WRAP(glMultiTexCoord1d(GLenum t, GLdouble s))                             { WRAP(glMultiTexCoord1f(t,(float)s)); }
 void WRAP(glMultiTexCoord2d(GLenum t, GLdouble s, GLdouble r))                 { WRAP(glMultiTexCoord2f(t,(float)s,(float)r)); }
 void WRAP(glMultiTexCoord3d(GLenum t, GLdouble s, GLdouble r, GLdouble q))     { WRAP(glMultiTexCoord3f(t,(float)s,(float)r,(float)q)); }
@@ -725,47 +874,74 @@ void WRAP(glMultiTexCoord2sv(GLenum t, const GLshort* v))                      {
 void WRAP(glTexGenf(GLenum coord, GLenum pname, GLfloat param))
 {
     DLREC(WRAP(glTexGenf(coord,pname,param)));
-    int c = coord - GL_S; if(c < 0 || c > 3) return;
-    if(pname == GL_TEXTURE_GEN_MODE)
-        globals->ff.texGen[c].mode = (GLenum)(int)param;
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(coord < GL_S || coord > (GL_S + 3) || pname != GL_TEXTURE_GEN_MODE) { SetError(GL_INVALID_ENUM); return; }
+    if(globals->ff.activeTextureUnit >= 8) { SetError(GL_INVALID_OPERATION); return; }
+    if(param != 0x2401 && param != 0x2400 && param != 0x2402 && param != 0x8511 && param != 0x8512) { SetError(GL_INVALID_ENUM); return; }
+    if((param == 0x2402 && coord > (GL_S + 1)) || ((param == 0x8511 || param == 0x8512) && coord == (GL_S + 3))) { SetError(GL_INVALID_ENUM); return; }
+    globals->ff.texGen[globals->ff.activeTextureUnit][coord-GL_S].mode = (GLenum)param;
 }
-void WRAP(glTexGend(GLenum coord, GLenum pname, GLdouble param))   { WRAP(glTexGenf(coord,pname,(float)param)); }
-void WRAP(glTexGeni(GLenum coord, GLenum pname, GLint param))      { DLREC(WRAP(glTexGeni(coord,pname,param))); int c=coord-GL_S; if(c<0||c>3)return; if(pname==GL_TEXTURE_GEN_MODE) globals->ff.texGen[c].mode=(GLenum)param; }
+void WRAP(glTexGend(GLenum coord, GLenum pname, GLdouble param)) { WRAP(glTexGenf(coord,pname,(float)param)); }
+void WRAP(glTexGeni(GLenum coord, GLenum pname, GLint param)) { WRAP(glTexGenf(coord,pname,(float)param)); }
 void WRAP(glTexGenfv(GLenum coord, GLenum pname, const GLfloat* p))
 {
-    DLREC(WRAP(glTexGenfv(coord,pname,p)));
-    int c = coord - GL_S; if(c < 0 || c > 3) return;
-    if(pname == GL_TEXTURE_GEN_MODE)      globals->ff.texGen[c].mode = (GLenum)(int)p[0];
-    else if(pname == GL_OBJECT_PLANE)     memcpy(globals->ff.texGen[c].objectPlane, p, 4*sizeof(float));
-    else if(pname == GL_EYE_PLANE)        memcpy(globals->ff.texGen[c].eyePlane,    p, 4*sizeof(float));
+    DLREC_DATA(p, (pname == GL_OBJECT_PLANE || pname == GL_EYE_PLANE ? 4 : 1), WRAP(glTexGenfv(coord,pname,_values.data())));
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(coord < GL_S || coord > (GL_S + 3)) { SetError(GL_INVALID_ENUM); return; }
+    if(globals->ff.activeTextureUnit >= 8) { SetError(GL_INVALID_OPERATION); return; }
+    auto& state = globals->ff.texGen[globals->ff.activeTextureUnit][coord-GL_S];
+    if(pname == GL_TEXTURE_GEN_MODE) WRAP(glTexGenf(coord,pname,p[0]));
+    else if(pname == GL_OBJECT_PLANE) memcpy(state.objectPlane, p, 4*sizeof(float));
+    else if(pname == GL_EYE_PLANE)
+    {
+        float inverse[16];
+        InverseMatrix(globals->matrix.modelview.Current().m, inverse);
+        for(int c = 0; c < 4; ++c)
+        {
+            state.eyePlane[c] = 0;
+            for(int j = 0; j < 4; ++j) state.eyePlane[c] += inverse[c*4+j] * p[j];
+        }
+    }
+    else SetError(GL_INVALID_ENUM);
 }
 void WRAP(glTexGendv(GLenum coord, GLenum pname, const GLdouble* p))
 {
-    float fp[4] = {(float)p[0],(float)p[1],(float)p[2],(float)p[3]};
-    WRAP(glTexGenfv(coord,pname,fp));
+    float values[4] = {};
+    int count = pname == GL_OBJECT_PLANE || pname == GL_EYE_PLANE ? 4 : 1;
+    for(int i = 0; i < count; ++i) values[i] = (float)p[i];
+    WRAP(glTexGenfv(coord,pname,values));
 }
 void WRAP(glTexGeniv(GLenum coord, GLenum pname, const GLint* p))
 {
-    float fp[4] = {(float)p[0],(float)p[1],(float)p[2],(float)p[3]};
-    WRAP(glTexGenfv(coord,pname,fp));
+    float values[4] = {};
+    int count = pname == GL_OBJECT_PLANE || pname == GL_EYE_PLANE ? 4 : 1;
+    for(int i = 0; i < count; ++i) values[i] = (float)p[i];
+    WRAP(glTexGenfv(coord,pname,values));
 }
-
 void WRAP(glPointParameterf(GLenum pname, GLfloat param))
 {
     DLREC(WRAP(glPointParameterf(pname,param)));
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    GLIN_InitExtensions();
+    if(pname >= 0x8126 && pname <= 0x8128 && param < 0) { SetError(GL_INVALID_VALUE); return; }
     switch(pname)
     {
+        case 0x8126: globals->ff.pointMin = param; break;
+        case 0x8127: globals->ff.pointMax = param; break;
         case 0x8128: // GL_POINT_FADE_THRESHOLD_SIZE
             globals->ff.pointFadeThreshold = param; break;
         case 0x8CA0: // GL_POINT_SPRITE_COORD_ORIGIN
+            if(param != 0x8CA1 && param != 0x8CA2) { SetError(GL_INVALID_ENUM); return; }
+            globals->ff.pointOrigin = (GLenum)param;
             break;
-        default: break;
+        default: SetError(GL_INVALID_ENUM); break;
     }
 }
 void WRAP(glPointParameteri(GLenum pname, GLint param))  { WRAP(glPointParameterf(pname,(float)param)); }
 void WRAP(glPointParameterfv(GLenum pname, const GLfloat* p))
 {
-    DLREC(WRAP(glPointParameterfv(pname,p)));
+    DLREC_DATA(p, (pname == 0x8129 ? 3 : 1), WRAP(glPointParameterfv(pname,_values.data())));
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
     if(pname == 0x8129) // GL_POINT_DISTANCE_ATTENUATION
         memcpy(globals->ff.pointAttenuation, p, 3*sizeof(float));
     else
@@ -773,18 +949,37 @@ void WRAP(glPointParameterfv(GLenum pname, const GLfloat* p))
 }
 void WRAP(glPointParameteriv(GLenum pname, const GLint* p))
 {
-    float fp[3] = {(float)p[0],(float)p[1],(float)p[2]};
+    float fp[3] = {(float)p[0],0,0};
+    if(pname == 0x8129) { fp[1] = (float)p[1]; fp[2] = (float)p[2]; }
     WRAP(glPointParameterfv(pname,fp));
 }
 
 void WRAP(glSecondaryColorPointer(GLint size, GLenum type, GLsizei stride, const void* ptr))
 {
-    // TODO: hook into fixed pipeline as secondary colour contribution
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if((size != 3 && size != 0x80E1) || stride < 0) { SetError(GL_INVALID_VALUE); return; }
+    if(!GetGLTypeSize(type) && !IsPackedVertex(type)) { SetError(GL_INVALID_ENUM); return; }
+    if((IsPackedVertex(type) && size == 3) || (size == 0x80E1 && type != GL_UNSIGNED_BYTE && !IsPackedVertex(type))) { SetError(GL_INVALID_OPERATION); return; }
     globals->client.secondaryColorSize   = size;
     globals->client.secondaryColorType   = type;
     globals->client.secondaryColorStride = stride;
     globals->client.secondaryColorPtr    = ptr;
-    globals->client.secondaryColorBuffer = globals->client.boundArrayBuffer;
+    GLint buffer;
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
+    globals->client.secondaryColorBuffer = buffer;
+}
+
+void WRAP(glFogCoordPointer(GLenum type, GLsizei stride, const void* ptr))
+{
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(type != GL_FLOAT && type != GL_HALF_FLOAT && type != 0x140A) { SetError(GL_INVALID_ENUM); return; }
+    if(stride < 0) { SetError(GL_INVALID_VALUE); return; }
+    GLint buffer;
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
+    globals->client.fogCoordType = type;
+    globals->client.fogCoordStride = stride;
+    globals->client.fogCoordPtr = ptr;
+    globals->client.fogCoordBuffer = buffer;
 }
 
 void WRAP(glEdgeFlag(GLboolean flag))                    { SetError(GL_INVALID_OPERATION); }
@@ -823,6 +1018,7 @@ void WRAP(glGetPixelMapusv(GLenum map, GLushort* v)) { SetError(GL_INVALID_OPERA
 
 void WRAP(glDrawPixels(GLsizei width, GLsizei height, GLenum format, GLenum type, const void* pixels))
 {
+    if(globals->gl.conditionalDiscard) return;
     if(!pixels || width <= 0 || height <= 0) return;
     if(!globals->render.rasterPosValid) return;
 
@@ -866,6 +1062,7 @@ void WRAP(glDrawPixels(GLsizei width, GLsizei height, GLenum format, GLenum type
 
 void WRAP(glCopyPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum type))
 {
+    if(globals->gl.conditionalDiscard) return;
     // Read from read framebuffer, draw at raster pos
     if(!globals->render.rasterPosValid) return;
     GLuint tex;

@@ -9,6 +9,7 @@
 #include <memory>
 #include <type_traits>
 #include <string>
+#include <utility>
 
 #include <time.h>
 inline unsigned long long GetClock()
@@ -159,22 +160,25 @@ struct matrices_type_stack_t
     matrix_stack_t projection;
     matrix_stack_t modelview;
     matrix_stack_t texture;
+    matrix_stack_t textureUnits[7];
+    unsigned int textureUnit = 0;
+    inline matrix_stack_t& Texture() { return textureUnit ? textureUnits[textureUnit-1] : texture; }
     inline matrix4_t& Push()
     {
         if(mode == GL_PROJECTION) return projection.Push();
-        else if(mode == GL_TEXTURE) return texture.Push();
+        else if(mode == GL_TEXTURE) return Texture().Push();
         else return modelview.Push();
     }
     inline matrix4_t& Current()
     {
         if(mode == GL_PROJECTION) return projection.Current();
-        else if(mode == GL_TEXTURE) return texture.Current();
+        else if(mode == GL_TEXTURE) return Texture().Current();
         else return modelview.Current();
     }
     inline void Pop()
     {
         if(mode == GL_PROJECTION) return projection.Pop();
-        else if(mode == GL_TEXTURE) return texture.Pop();
+        else if(mode == GL_TEXTURE) return Texture().Pop();
         else return modelview.Pop();
     }
 };
@@ -214,6 +218,12 @@ struct client_state_t
     GLint clientActiveTextureUnit = 0;
 
     GLint  secondaryColorSize   = 3;
+    bool secondaryColorArrayEnabled = false;
+    bool fogCoordArrayEnabled = false;
+    GLenum fogCoordType = GL_FLOAT;
+    GLsizei fogCoordStride = 0;
+    GLuint fogCoordBuffer = 0;
+    const void* fogCoordPtr = nullptr;
     GLenum secondaryColorType   = GL_FLOAT;
     GLsizei secondaryColorStride = 0;
     GLuint secondaryColorBuffer = 0;
@@ -227,7 +237,7 @@ struct fixed_light_t
     vector4_t ambient = {0,0,0,1};
     vector4_t diffuse = {0,0,0,1};
     vector4_t spec = {0,0,0,1};
-    vector4_t dir = {0,0,0,1};
+    vector4_t dir = {0,0,-1,0};
     float spotExp = 0.0f;
     float spotCutoff = 180.0f;
     float spotPad[2]; // std140
@@ -238,21 +248,42 @@ struct fixed_light_t
 };
 struct fixed_func_state_t
 {
+    struct texture_env_t
+    {
+        GLenum mode = GL_MODULATE;
+        GLenum combineRGB = GL_MODULATE, combineAlpha = GL_MODULATE;
+        GLenum sourceRGB[3] = {GL_TEXTURE, 0x8578, 0x8576};
+        GLenum sourceAlpha[3] = {GL_TEXTURE, 0x8578, 0x8576};
+        GLenum operandRGB[3] = {GL_SRC_COLOR, GL_SRC_COLOR, GL_SRC_ALPHA};
+        GLenum operandAlpha[3] = {GL_SRC_ALPHA, GL_SRC_ALPHA, GL_SRC_ALPHA};
+        GLint scaleRGB = 1, scaleAlpha = 1;
+        vector4_t color = {0,0,0,0};
+    } texEnv[8];
     bool textureEnabled[8] = {};
     bool lightingEnabled = false;
     bool normalizeEnabled = false;
+    bool rescaleNormalEnabled = false;
     bool fogEnabled = false;
+    bool colorSum = false;
+    GLenum clampVertexColor = GL_TRUE;
+    GLenum clampFragmentColor = 0x891D;
+    GLenum clampReadColor = 0x891D;
+    GLenum fogSource = 0x8452;
     bool logicOpEnabled = false;
     GLenum logicOpMode = GL_COPY;
 
     bool lightEnabled[8] = { false };
     fixed_light_t lights[8];
     
-    float matAmbient[4]   = {0.2f, 0.2f, 0.2f, 1.0f};
-    float matDiffuse[4]   = {0.8f, 0.8f, 0.8f, 1.0f};
-    float matSpecular[4]  = {0.0f, 0.0f, 0.0f, 1.0f};
-    float matEmission[4]  = {0.0f, 0.0f, 0.0f, 1.0f};
-    float matShininess = 0.0f;
+    struct material_t
+    {
+        float ambient[4] = {0.2f, 0.2f, 0.2f, 1.0f};
+        float diffuse[4] = {0.8f, 0.8f, 0.8f, 1.0f};
+        float specular[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        float emission[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        float shininess = 0.0f;
+        float indexes[3] = {0,1,1};
+    } materials[2];
     
     GLenum colorMaterialFace = GL_FRONT_AND_BACK;
     GLenum colorMaterialMode = GL_AMBIENT_AND_DIFFUSE;
@@ -268,9 +299,11 @@ struct fixed_func_state_t
     
     bool lightModelTwoSide = false;
     bool lightModelLocalViewer = false;
+    GLenum lightModelColorControl = 0x81F9;
     bool affineTexcoord = false;
 
     GLenum shadeModel = GL_SMOOTH;
+    GLenum provokingVertex = 0x8E4E;
     GLint texEnvMode = GL_MODULATE;
     GLint activeTextureUnit = 0;
 
@@ -279,6 +312,10 @@ struct fixed_func_state_t
     float alphaTestRef = 0.0f;
 
     float pointSize = 1.0f;
+    float pointMin = 0.0f, pointMax = 1.0f;
+    GLenum pointOrigin = 0x8CA2;
+    bool pointSprite = false;
+    bool pointCoordReplace[8] = {};
     float lineWidth = 1.0f;
 
     float pointAttenuation[3] = {1.0f, 0.0f, 0.0f};
@@ -290,7 +327,12 @@ struct fixed_func_state_t
         float  objectPlane[4] = {0,0,0,0};
         float  eyePlane[4]    = {0,0,0,0};
         bool   enabled       = false;
-    } texGen[4]; // S T R Q
+    } texGen[8][4];
+
+    fixed_func_state_t()
+    {
+        for(auto& unit : texGen) for(int c = 0; c < 2; ++c) unit[c].objectPlane[c] = unit[c].eyePlane[c] = 1;
+    }
 
     GLubyte  polygonStipple[128] = {0};
     bool     polygonStippleEnabled = false;
@@ -312,17 +354,24 @@ struct render_list_t
     bool texture = false;
     bool colorMaterial = false;
     vector4_t color = {1.0f, 1.0f, 1.0f, 1.0f};
-    vector2_t texcoord = {0.0f, 0.0f};
+    vector4_t texcoord = {0.0f, 0.0f, 0.0f, 1.0f};
+    vector4_t multiTexcoord[7] = {{0,0,0,1}, {0,0,0,1}, {0,0,0,1}, {0,0,0,1}, {0,0,0,1}, {0,0,0,1}, {0,0,0,1}};
     vector3_t normal = {0.0f, 0.0f, 1.0f};
     GLfloat mvp_matrix[16] = { 0.0f };
     
     std::vector<vector4_t> vertices;
     std::vector<vector4_t> colors;
-    std::vector<vector2_t> texcoords;
+    std::vector<vector4_t> texcoords[8];
     std::vector<vector3_t> normals;
+    vector3_t secondaryColor = {0,0,0};
+    GLfloat fogCoord = 0;
+    std::vector<vector3_t> secondaryColors;
+    std::vector<GLfloat> fogCoords;
+    std::vector<vector4_t> materialValues;
+    GLint materialWidth = 0;
     
     GLuint fixedVAO = 0;
-    GLuint fixedVBO[11] = { 0 };
+    GLuint fixedVBO[13] = { 0 };
     
     vector4_t ambient = {0.2f, 0.2f, 0.2f, 1.0f};
     
@@ -338,13 +387,26 @@ struct shader_desc_t
 };
 
 // globals.textures[*]
+struct texture_level_t
+{
+    texture_level_t() = default;
+    texture_level_t(GLenum format, GLsizei width, GLsizei height, std::vector<unsigned char> compressed = {}, bool valid = true)
+        : format(format), width(width), height(height), compressed(std::move(compressed)), compressedValid(valid) {}
+    GLenum format = GL_RGBA;
+    GLsizei width = 0, height = 0;
+    std::vector<unsigned char> compressed;
+    bool compressedValid = true;
+};
+
 struct texture_desc_t
 {
     GLuint id = 0;
+    bool renderTarget = false;
     GLenum target = 0;
     GLenum baseFormat = GL_RGBA;
     unsigned int width = 0;
     unsigned int height = 0;
+    std::unordered_map<unsigned long long, texture_level_t> levels;
 };
 
 // globals.queries[*]
@@ -379,6 +441,11 @@ struct program_arb_t
 // globals.gl
 struct glstate_t
 {
+    std::unordered_map<GLuint, GLenum> queryTargets;
+    GLuint conditionalQuery = 0;
+    bool conditionalDiscard = false;
+    bool conditionalNative = false;
+    bool framebufferSRGB = false;
     bool primitiveRestart = false;
     GLuint restartIndex = 0;
     bool enabledVertProgARB = false;
@@ -446,6 +513,7 @@ struct attrib_snapshot_t
     bool primitiveRestart = false;
     fixed_func_state_t fixed;
     std::unordered_map<GLenum, GLboolean> nativeEnable;
+    bool framebufferSRGB = false;
     GLint blend[6] = {}, depthFunc = GL_LESS, cullFace = GL_BACK, frontFace = GL_CCW;
     GLint viewport[4] = {}, scissor[4] = {};
     GLfloat clearColor[4] = {}, blendColor[4] = {}, depthRange[2] = {}, clearDepth = 1;
@@ -454,8 +522,11 @@ struct attrib_snapshot_t
     GLbitfield mask = 0;
 
     // GL_CURRENT_BIT
+    vector3_t secondaryColor;
+    GLfloat fogCoord;
     vector4_t color;
-    vector2_t texcoord;
+    vector4_t texcoord;
+    vector4_t multiTexcoord[7];
     vector3_t normal;
 
     // GL_ENABLE_BIT etc.
@@ -475,8 +546,6 @@ struct attrib_snapshot_t
     float fogDensity, fogStart, fogEnd;
 
     // GL_LIGHTING_BIT
-    float matAmbient[4], matDiffuse[4], matSpecular[4], matEmission[4];
-    float matShininess;
     GLenum colorMaterialFace, colorMaterialMode;
     bool lightModelTwoSide, lightModelLocalViewer;
     GLenum shadeModel;
@@ -544,6 +613,7 @@ struct client_attrib_snapshot_t
 struct fixed_program_t;
 struct shared_objects_t
 {
+    std::unordered_map<GLuint, bool> geometryPrograms;
     std::unordered_map<GLuint, display_list_t*> lists;
     std::unordered_map<GLuint, shader_desc_t*> shaders;
     std::unordered_map<GLuint, program_arb_t*> programsARB;
@@ -585,13 +655,14 @@ struct glin_globals_t
     fixed_func_state_t ff;
     client_state_t client;
     settings_t settings;
+    std::unordered_map<GLenum, texture_desc_t> defaultTextures;
     std::shared_ptr<shared_objects_t> objects;
     std::unordered_map<GLuint, display_list_t*>& lists;
     std::unordered_map<GLuint, shader_desc_t*>& shaders;
     std::unordered_map<GLuint, program_arb_t*>& programsARB;
     std::unordered_map<GLuint, texture_desc_t*>& textures;
     std::unordered_map<GLuint, query_desc_t*>& queries;
-    std::unordered_map<unsigned long long, std::shared_ptr<fixed_program_t>> fixedPrograms;
+    std::unordered_map<std::string, std::shared_ptr<fixed_program_t>> fixedPrograms;
     std::vector<attrib_snapshot_t> attribStack;
     std::vector<client_attrib_snapshot_t> clientAttribStack;
     ~glin_globals_t() { delete[] arb.errorStr; }

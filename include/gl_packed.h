@@ -1,0 +1,41 @@
+#pragma once
+#include "GLES.h"
+
+void WRAP(glVertexP2ui(GLenum type, GLuint value));
+void WRAP(glVertexP2uiv(GLenum type, const GLuint* value));
+void WRAP(glVertexP3ui(GLenum type, GLuint value));
+void WRAP(glVertexP3uiv(GLenum type, const GLuint* value));
+void WRAP(glVertexP4ui(GLenum type, GLuint value));
+void WRAP(glVertexP4uiv(GLenum type, const GLuint* value));
+void WRAP(glTexCoordP1ui(GLenum type, GLuint value));
+void WRAP(glTexCoordP1uiv(GLenum type, const GLuint* value));
+void WRAP(glTexCoordP2ui(GLenum type, GLuint value));
+void WRAP(glTexCoordP2uiv(GLenum type, const GLuint* value));
+void WRAP(glTexCoordP3ui(GLenum type, GLuint value));
+void WRAP(glTexCoordP3uiv(GLenum type, const GLuint* value));
+void WRAP(glTexCoordP4ui(GLenum type, GLuint value));
+void WRAP(glTexCoordP4uiv(GLenum type, const GLuint* value));
+void WRAP(glMultiTexCoordP1ui(GLenum texture, GLenum type, GLuint value));
+void WRAP(glMultiTexCoordP1uiv(GLenum texture, GLenum type, const GLuint* value));
+void WRAP(glMultiTexCoordP2ui(GLenum texture, GLenum type, GLuint value));
+void WRAP(glMultiTexCoordP2uiv(GLenum texture, GLenum type, const GLuint* value));
+void WRAP(glMultiTexCoordP3ui(GLenum texture, GLenum type, GLuint value));
+void WRAP(glMultiTexCoordP3uiv(GLenum texture, GLenum type, const GLuint* value));
+void WRAP(glMultiTexCoordP4ui(GLenum texture, GLenum type, GLuint value));
+void WRAP(glMultiTexCoordP4uiv(GLenum texture, GLenum type, const GLuint* value));
+void WRAP(glNormalP3ui(GLenum type, GLuint value));
+void WRAP(glNormalP3uiv(GLenum type, const GLuint* value));
+void WRAP(glColorP3ui(GLenum type, GLuint value));
+void WRAP(glColorP3uiv(GLenum type, const GLuint* value));
+void WRAP(glColorP4ui(GLenum type, GLuint value));
+void WRAP(glColorP4uiv(GLenum type, const GLuint* value));
+void WRAP(glSecondaryColorP3ui(GLenum type, GLuint value));
+void WRAP(glSecondaryColorP3uiv(GLenum type, const GLuint* value));
+void WRAP(glVertexAttribP1ui(GLuint index, GLenum type, GLboolean normalized, GLuint value));
+void WRAP(glVertexAttribP1uiv(GLuint index, GLenum type, GLboolean normalized, const GLuint* value));
+void WRAP(glVertexAttribP2ui(GLuint index, GLenum type, GLboolean normalized, GLuint value));
+void WRAP(glVertexAttribP2uiv(GLuint index, GLenum type, GLboolean normalized, const GLuint* value));
+void WRAP(glVertexAttribP3ui(GLuint index, GLenum type, GLboolean normalized, GLuint value));
+void WRAP(glVertexAttribP3uiv(GLuint index, GLenum type, GLboolean normalized, const GLuint* value));
+void WRAP(glVertexAttribP4ui(GLuint index, GLenum type, GLboolean normalized, GLuint value));
+void WRAP(glVertexAttribP4uiv(GLuint index, GLenum type, GLboolean normalized, const GLuint* value));

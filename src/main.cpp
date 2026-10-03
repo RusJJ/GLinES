@@ -11,6 +11,8 @@
 #include "gl_render.h"
 #include "gl_shader.h"
 #include "gl_texture.h"
+#include "gl_compat.h"
+#include "gl_packed.h"
 #if defined(SYS64)
     #define RET_CMP(__fn_name, __fn) if(strcmp(name, __fn_name) == 0) { DBG("GLinES returned 0x%016llX for %s", (unsigned long long)__fn, __fn_name); return (void*)__fn; }
 #else
@@ -54,6 +56,10 @@ void GLIN_InitExtensions()
     ext.compressedFormats.resize(count);
     if(count) glGetIntegerv(GL_COMPRESSED_TEXTURE_FORMATS, ext.compressedFormats.data());
     ext.checked = true;
+    GLfloat pointRange[2];
+    glGetFloatv(GL_ALIASED_POINT_SIZE_RANGE, pointRange);
+    globals->ff.pointMax = pointRange[1];
+    if(GLIN_HasExtension("GL_EXT_sRGB_write_control")) glDisable(0x8DB9);
     std::istringstream stream(pszGLExtensions);
     std::string name;
     while(stream >> name) ext.names.push_back(name);
@@ -284,6 +290,7 @@ GLINAPI EXPORT void* GLIN_GetProcAddress(const char* name)
     GLIN_ALL(glDrawRangeElements);
     GLIN_ALL(glDrawElementsBaseVertex);
     GLIN_ALL(glPrimitiveRestartIndex);
+    GLIN_ALL(glProvokingVertex);
     GLIN_ALL(glDrawElementsInstanced);
     GLIN_ALL(glDrawElementsInstancedBaseVertex);
     GLIN_ALL(glMultiDrawArrays);
@@ -307,6 +314,8 @@ GLINAPI EXPORT void* GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glGetClipPlane);
 // -----------------------------------------------------------------------
     GLIN_MAP(glClearDepth);
+    GLIN_MAP(glClearColor);
+    GLIN_MAP(glReadPixels);
     GLIN_MAP(glDepthRange);
 // -----------------------------------------------------------------------
     GLIN_MAP(glLightf);     GLIN_MAP(glLightfv);
@@ -395,7 +404,12 @@ GLINAPI EXPORT void* GLIN_GetProcAddress(const char* name)
 // -----------------------------------------------------------------------
     GLIN_ALL(glCompileShader);
     GLIN_ALL(glCreateShader);
+    GLIN_ALL(glDeleteProgram);
     GLIN_ALL(glLinkProgram);
+    GLIN_ALL(glProgramBinary);
+    GLIN_ALL(glBindFragDataLocation);
+    GLIN_ALL(glBindFragDataLocationIndexed);
+    GLIN_ALL(glGetFragDataIndex);
     GLIN_ALL(glGetActiveUniformName);
     GLIN_ALL(glUseProgram);
     AS_GLIN_ALL(glUseProgramObject, glUseProgram);
@@ -505,6 +519,7 @@ GLINAPI EXPORT void* GLIN_GetProcAddress(const char* name)
     GLIN_MAP(glPrioritizeTextures);
     GLIN_MAP(glAreTexturesResident);
 // -----------------------------------------------------------------------
+    #include "GL_Compat.inl"
     #include "ES3_Funcs.inl"
 // -----------------------------------------------------------------------
     MSG("GLIN_GetProcAddress(\"%s\") returned NULL!", name);

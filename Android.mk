@@ -12,6 +12,8 @@ LOCAL_SRC_FILES := \
 	src/math.cpp \
 	src/wrapped.cpp \
 	src/gl/buffer.cpp \
+	src/gl/compat.cpp \
+	src/gl/packed.cpp \
 	src/gl/matrix.cpp \
 	src/gl/object.cpp \
 	src/gl/queries.cpp \
@@ -22,6 +24,6 @@ LOCAL_SRC_FILES := \
 	src/gl/uniform.cpp \
 	thirdparty/DXTn.c
 
-LOCAL_CPPFLAGS := -std=c++17 -Wall -Wextra
+LOCAL_CPPFLAGS := -std=c++14 -Wall -Wextra -Werror=c++17-extensions
 LOCAL_LDLIBS := -llog -ldl -lGLESv3
 include $(BUILD_SHARED_LIBRARY)

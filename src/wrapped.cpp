@@ -1,6 +1,8 @@
 #include "GLES.h"
+#include "wrapped.h"
 #include <array>
 #include <algorithm>
+#include <cmath>
 #include "glhelper.h"
 #include "gl_render.h"
 #include "gl_shader.h"
@@ -161,15 +163,20 @@ void WRAP(glListBase(GLuint base))
 void WRAP(glPushAttrib(GLbitfield mask))
 {
     DLREC(WRAP(glPushAttrib(mask)));
+    GLIN_InitExtensions();
 
     if(globals->attribStack.size() >= 16) { SetError(GL_STACK_OVERFLOW); return; }
     attrib_snapshot_t snap;
     snap.mask = mask;
+    snap.framebufferSRGB = globals->gl.framebufferSRGB;
 
     // GL_CURRENT_BIT
     snap.color    = globals->render.color;
     snap.texcoord = globals->render.texcoord;
+    memcpy(snap.multiTexcoord, globals->render.multiTexcoord, sizeof(snap.multiTexcoord));
     snap.normal   = globals->render.normal;
+    snap.secondaryColor = globals->render.secondaryColor;
+    snap.fogCoord = globals->render.fogCoord;
 
     // GL_ENABLE_BIT
     snap.lightingEnabled = globals->ff.lightingEnabled;
@@ -190,11 +197,6 @@ void WRAP(glPushAttrib(GLbitfield mask))
     snap.fogEnd     = globals->ff.fogEnd;
 
     // GL_LIGHTING_BIT
-    memcpy(snap.matAmbient,  globals->ff.matAmbient,  sizeof(snap.matAmbient));
-    memcpy(snap.matDiffuse,  globals->ff.matDiffuse,  sizeof(snap.matDiffuse));
-    memcpy(snap.matSpecular, globals->ff.matSpecular, sizeof(snap.matSpecular));
-    memcpy(snap.matEmission, globals->ff.matEmission, sizeof(snap.matEmission));
-    snap.matShininess        = globals->ff.matShininess;
     snap.colorMaterialFace   = globals->ff.colorMaterialFace;
     snap.colorMaterialMode   = globals->ff.colorMaterialMode;
     snap.lightModelTwoSide   = globals->ff.lightModelTwoSide;
@@ -248,13 +250,20 @@ void WRAP(glPopAttrib())
     {
         globals->render.color    = snap.color;
         globals->render.texcoord = snap.texcoord;
+        memcpy(globals->render.multiTexcoord, snap.multiTexcoord, sizeof(snap.multiTexcoord));
         globals->render.normal   = snap.normal;
+        globals->render.secondaryColor = snap.secondaryColor;
+        globals->render.fogCoord = snap.fogCoord;
     }
     if(mask & GL_ENABLE_BIT)
     {
+        globals->ff.pointSprite = snap.fixed.pointSprite;
+        globals->ff.colorSum = snap.fixed.colorSum;
+        for(int unit = 0; unit < 8; ++unit) for(int c = 0; c < 4; ++c) globals->ff.texGen[unit][c].enabled = snap.fixed.texGen[unit][c].enabled;
         globals->gl.primitiveRestart = snap.primitiveRestart;
         globals->ff.lightingEnabled  = snap.lightingEnabled;
         globals->ff.normalizeEnabled = snap.normalizeEnabled;
+        globals->ff.rescaleNormalEnabled = snap.fixed.rescaleNormalEnabled;
         globals->ff.fogEnabled       = snap.fogEnabled;
         globals->ff.logicOpEnabled   = snap.logicOpEnabled;
         globals->ff.alphaTestEnabled = snap.alphaTestEnabled;
@@ -271,44 +280,73 @@ void WRAP(glPopAttrib())
         globals->ff.fogDensity = snap.fogDensity;
         globals->ff.fogStart   = snap.fogStart;
         globals->ff.fogEnd     = snap.fogEnd;
+        globals->ff.fogSource = snap.fixed.fogSource;
+        globals->ff.colorSum = snap.fixed.colorSum;
+    }
+    if(mask & 0x00001000)
+    {
+        globals->ff.normalizeEnabled = snap.fixed.normalizeEnabled;
+        globals->ff.rescaleNormalEnabled = snap.fixed.rescaleNormalEnabled;
     }
     if(mask & GL_LIGHTING_BIT)
     {
-        memcpy(globals->ff.matAmbient,  snap.matAmbient,  sizeof(snap.matAmbient));
-        memcpy(globals->ff.matDiffuse,  snap.matDiffuse,  sizeof(snap.matDiffuse));
-        memcpy(globals->ff.matSpecular, snap.matSpecular, sizeof(snap.matSpecular));
-        memcpy(globals->ff.matEmission, snap.matEmission, sizeof(snap.matEmission));
+        globals->ff.clampVertexColor = snap.fixed.clampVertexColor;
+        globals->ff.materials[0] = snap.fixed.materials[0];
+        globals->ff.materials[1] = snap.fixed.materials[1];
         globals->ff.lightingEnabled = snap.lightingEnabled;
         globals->render.colorMaterial = snap.colorMaterial;
         memcpy(globals->ff.lightEnabled, snap.lightEnabled, sizeof(snap.lightEnabled));
-        globals->ff.matShininess        = snap.matShininess;
         globals->ff.colorMaterialFace   = snap.colorMaterialFace;
         globals->ff.colorMaterialMode   = snap.colorMaterialMode;
         globals->ff.lightModelTwoSide   = snap.lightModelTwoSide;
         globals->ff.lightModelLocalViewer = snap.lightModelLocalViewer;
+        globals->ff.lightModelColorControl = snap.fixed.lightModelColorControl;
         globals->ff.shadeModel          = snap.shadeModel;
+        WRAP(glProvokingVertex(snap.fixed.provokingVertex));
         memcpy(globals->ff.lights, snap.lights, sizeof(snap.lights));
         globals->render.ambient         = snap.ambient;
     }
     if(mask & GL_TEXTURE_BIT)
     {
         globals->ff.texEnvMode = snap.texEnvMode;
+        memcpy(globals->ff.texGen, snap.fixed.texGen, sizeof(globals->ff.texGen));
+        memcpy(globals->ff.texEnv, snap.fixed.texEnv, sizeof(snap.fixed.texEnv));
         memcpy(globals->ff.textureEnabled, snap.fixed.textureEnabled, sizeof(snap.fixed.textureEnabled));
         globals->render.texture = globals->ff.textureEnabled[0];
     }
-    if(mask & GL_POINT_BIT)  globals->ff.pointSize = snap.pointSize;
+    if(mask & GL_POINT_BIT)
+    {
+        globals->ff.pointSize = snap.pointSize;
+        globals->ff.pointMin = snap.fixed.pointMin;
+        globals->ff.pointMax = snap.fixed.pointMax;
+        globals->ff.pointFadeThreshold = snap.fixed.pointFadeThreshold;
+        globals->ff.pointOrigin = snap.fixed.pointOrigin;
+        globals->ff.pointSprite = snap.fixed.pointSprite;
+        memcpy(globals->ff.pointCoordReplace, snap.fixed.pointCoordReplace, sizeof(globals->ff.pointCoordReplace));
+        memcpy(globals->ff.pointAttenuation, snap.fixed.pointAttenuation, sizeof(globals->ff.pointAttenuation));
+    }
     if(mask & GL_LINE_BIT) { globals->ff.lineWidth = snap.lineWidth; glLineWidth(snap.lineWidth); }
     if(mask & GL_POLYGON_BIT) globals->gl.lastPolygonMode = snap.lastPolygonMode;
     if(mask & GL_COLOR_BUFFER_BIT)
     {
+        globals->ff.clampFragmentColor = snap.fixed.clampFragmentColor;
+        globals->ff.clampReadColor = snap.fixed.clampReadColor;
         globals->ff.alphaTestEnabled = snap.alphaTestEnabled;
         globals->ff.alphaTestFunc = snap.alphaTestFunc;
         globals->ff.alphaTestRef  = snap.alphaTestRef;
     }
 
     auto restoreEnable = [&](GLenum cap) { if(snap.nativeEnable[cap]) glEnable(cap); else glDisable(cap); };
+    if((mask & (GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT)) && snap.framebufferSRGB != globals->gl.framebufferSRGB)
+    {
+        if(snap.framebufferSRGB) WRAP(glEnable(0x8DB9));
+        else WRAP(glDisable(0x8DB9));
+    }
     if(mask & GL_ENABLE_BIT)
     {
+        globals->ff.clampVertexColor = snap.fixed.clampVertexColor;
+        globals->ff.clampFragmentColor = snap.fixed.clampFragmentColor;
+        globals->ff.clampReadColor = snap.fixed.clampReadColor;
         for(auto& state : snap.nativeEnable) restoreEnable(state.first);
         memcpy(globals->ff.textureEnabled, snap.fixed.textureEnabled, sizeof(snap.fixed.textureEnabled));
     }
@@ -329,6 +367,7 @@ void WRAP(glPopAttrib())
     if(mask & GL_POLYGON_BIT) { restoreEnable(GL_CULL_FACE); glCullFace(snap.cullFace); glFrontFace(snap.frontFace); }
     if(mask & 0x00000800) { glViewport(snap.viewport[0], snap.viewport[1], snap.viewport[2], snap.viewport[3]); glDepthRangef(snap.depthRange[0], snap.depthRange[1]); }
     if(mask & 0x00080000) { restoreEnable(GL_SCISSOR_TEST); glScissor(snap.scissor[0], snap.scissor[1], snap.scissor[2], snap.scissor[3]); }
+    if(mask & (GL_CURRENT_BIT | GL_ENABLE_BIT | GL_LIGHTING_BIT)) UpdateColorMaterial();
     globals->attribStack.pop_back();
 }
 
@@ -399,6 +438,17 @@ void WRAP(glPopClientAttrib())
         globals->client.normalStride = snap.normalStride;
         globals->client.normalBuffer = snap.normalBuffer;
         globals->client.normalPtr    = snap.normalPtr;
+        globals->client.secondaryColorArrayEnabled = snap.client.secondaryColorArrayEnabled;
+        globals->client.secondaryColorSize = snap.client.secondaryColorSize;
+        globals->client.secondaryColorType = snap.client.secondaryColorType;
+        globals->client.secondaryColorStride = snap.client.secondaryColorStride;
+        globals->client.secondaryColorBuffer = snap.client.secondaryColorBuffer;
+        globals->client.secondaryColorPtr = snap.client.secondaryColorPtr;
+        globals->client.fogCoordArrayEnabled = snap.client.fogCoordArrayEnabled;
+        globals->client.fogCoordType = snap.client.fogCoordType;
+        globals->client.fogCoordStride = snap.client.fogCoordStride;
+        globals->client.fogCoordBuffer = snap.client.fogCoordBuffer;
+        globals->client.fogCoordPtr = snap.client.fogCoordPtr;
     }
     if(mask & GL_CLIENT_PIXEL_STORE_BIT)
     {
@@ -429,8 +479,120 @@ void WRAP(glGetBooleanIndexedv(GLenum target, GLuint index, GLboolean *data))
 // -----------------------------------------------------------------------
 extern GLint GLIN_ExtensionCount();
 
+static bool LegacyArrayState(GLenum pname, GLint64* value)
+{
+    const auto& client = globals->client;
+    const auto& texture = client.texCoord[client.clientActiveTextureUnit];
+    switch(pname)
+    {
+        case GL_VERTEX_ARRAY: *value = client.vertexArrayEnabled; break;
+        case GL_NORMAL_ARRAY: *value = client.normalArrayEnabled; break;
+        case GL_COLOR_ARRAY: *value = client.colorArrayEnabled; break;
+        case GL_TEXTURE_COORD_ARRAY: *value = texture.enabled; break;
+        case 0x807A: *value = client.vertexSize; break;
+        case 0x807B: *value = client.vertexType; break;
+        case 0x807C: *value = client.vertexStride; break;
+        case 0x807E: *value = client.normalType; break;
+        case 0x807F: *value = client.normalStride; break;
+        case 0x8081: *value = client.colorSize; break;
+        case 0x8082: *value = client.colorType; break;
+        case 0x8083: *value = client.colorStride; break;
+        case 0x8088: *value = texture.texCoordSize; break;
+        case 0x8089: *value = texture.texCoordType; break;
+        case 0x808A: *value = texture.texCoordStride; break;
+        case 0x84E1: *value = GL_TEXTURE0 + client.clientActiveTextureUnit; break;
+        case 0x8454: *value = client.fogCoordType; break;
+        case 0x8455: *value = client.fogCoordStride; break;
+        case 0x8457: *value = client.fogCoordArrayEnabled; break;
+        case 0x845A: *value = client.secondaryColorSize; break;
+        case 0x845B: *value = client.secondaryColorType; break;
+        case 0x845C: *value = client.secondaryColorStride; break;
+        case 0x845E: *value = client.secondaryColorArrayEnabled; break;
+        case 0x8896: *value = client.vertexBuffer; break;
+        case 0x8897: *value = client.normalBuffer; break;
+        case 0x8898: *value = client.colorBuffer; break;
+        case 0x889A: *value = texture.texCoordBuffer; break;
+        case 0x889C: *value = client.secondaryColorBuffer; break;
+        case 0x889D: *value = client.fogCoordBuffer; break;
+        default: return false;
+    }
+    return true;
+}
+
+static int LegacyState(GLenum pname, GLdouble* values)
+{
+    GLint64 value;
+    if(LegacyArrayState(pname, &value)) { *values = (GLdouble)value; return 1; }
+    switch(pname)
+    {
+        case GL_COLOR_CLEAR_VALUE:
+        {
+            GLfloat color[4];
+            glGetFloatv(pname, color);
+            bool clamp = FragmentColorClamped();
+            for(int i = 0; i < 4; ++i) values[i] = clamp ? std::min(std::max(color[i], 0.0f), 1.0f) : color[i];
+            return 4;
+        }
+        case 0x0C60: case 0x0C61: case 0x0C62: case 0x0C63:
+            if(globals->ff.activeTextureUnit >= 8) { SetError(GL_INVALID_OPERATION); return -1; }
+            *values = globals->ff.texGen[globals->ff.activeTextureUnit][pname-0x0C60].enabled; return 1;
+        case 0x8DB9: GLIN_InitExtensions(); *values = globals->gl.framebufferSRGB; return 1;
+        case 0x0B11: *values = globals->ff.pointSize; return 1;
+        case 0x8126: *values = globals->ff.pointMin; return 1;
+        case 0x8127: GLIN_InitExtensions(); *values = globals->ff.pointMax; return 1;
+        case 0x8128: *values = globals->ff.pointFadeThreshold; return 1;
+        case 0x8129: for(int i = 0; i < 3; ++i) values[i] = globals->ff.pointAttenuation[i]; return 3;
+        case 0x8CA0: *values = globals->ff.pointOrigin; return 1;
+        case 0x8861: *values = globals->ff.pointSprite; return 1;
+        case 0x803A: *values = globals->ff.rescaleNormalEnabled; return 1;
+        case 0x81F8: *values = globals->ff.lightModelColorControl; return 1;
+        case 0x0B51: *values = globals->ff.lightModelLocalViewer; return 1;
+        case 0x0B52: *values = globals->ff.lightModelTwoSide; return 1;
+        case 0x0B55: *values = globals->ff.colorMaterialFace; return 1;
+        case 0x0B56: *values = globals->ff.colorMaterialMode; return 1;
+        case 0x8E4F: *values = globals->ff.provokingVertex; return 1;
+        case 0x8E4C: *values = GL_TRUE; return 1;
+        case 0x891A: *values = globals->ff.clampVertexColor; return 1;
+        case 0x891B: *values = globals->ff.clampFragmentColor; return 1;
+        case 0x891C: *values = globals->ff.clampReadColor; return 1;
+        case 0x8450: *values = globals->ff.fogSource; return 1;
+        case 0x8453: *values = globals->render.fogCoord; return 1;
+        case 0x8458: *values = globals->ff.colorSum; return 1;
+        case 0x8459: values[0] = globals->render.secondaryColor.x; values[1] = globals->render.secondaryColor.y; values[2] = globals->render.secondaryColor.z; values[3] = 1; return 4;
+        default: return 0;
+    }
+}
+
+void WRAP(glGetPointerv(GLenum pname, void** params))
+{
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    const auto& client = globals->client;
+    switch(pname)
+    {
+        case 0x808E: *params = (void*)client.vertexPtr; return;
+        case 0x808F: *params = (void*)client.normalPtr; return;
+        case 0x8090: *params = (void*)client.colorPtr; return;
+        case 0x8092: *params = (void*)client.texCoord[client.clientActiveTextureUnit].texCoordPtr; return;
+        case 0x8456: *params = (void*)client.fogCoordPtr; return;
+        case 0x845D: *params = (void*)client.secondaryColorPtr; return;
+        default: glGetPointerv(pname, params); return;
+    }
+}
+
 void WRAP(glGetIntegerv(GLenum pname, GLint* params))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    GLdouble values[4];
+    int count = LegacyState(pname, values);
+    if(count)
+    {
+        for(int i = 0; i < count; ++i)
+        {
+            GLdouble value = pname == 0x8459 || pname == GL_COLOR_CLEAR_VALUE ? std::min(std::max(values[i], -1.0), 1.0) * (values[i] < 0 ? 2147483648.0 : 2147483647.0) : std::round(values[i]);
+            params[i] = (GLint)std::min(std::max(value, -2147483648.0), 2147483647.0);
+        }
+        return;
+    }
     switch(pname)
     {
         case 0x8F9E: *params = (GLint)globals->gl.restartIndex; return;
@@ -466,10 +628,6 @@ void WRAP(glGetIntegerv(GLenum pname, GLint* params))
             *params = (GLint)globals->gl.activeTexUnit;
             break;
 
-        case 0x84E1: //GL_CLIENT_ACTIVE_TEXTURE:
-            *params = (GLint)(GL_TEXTURE0 + globals->client.clientActiveTextureUnit);
-            break;
-
         case 0x0D31: //GL_MAX_LIGHTS:
             *params = 8;
             break;
@@ -502,9 +660,61 @@ void WRAP(glGetIntegerv(GLenum pname, GLint* params))
     }
 }
 
+void WRAP(glGetInteger64v(GLenum pname, GLint64* params))
+{
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(LegacyArrayState(pname, params)) return;
+    if(pname == GL_COLOR_CLEAR_VALUE)
+    {
+        GLdouble values[4];
+        LegacyState(pname, values);
+        for(int i = 0; i < 4; ++i)
+        {
+            GLdouble value = values[i] * (values[i] < 0 ? 9223372036854775808.0 : 9223372036854775807.0);
+            params[i] = value >= (GLdouble)INT64_MAX ? INT64_MAX : value <= (GLdouble)INT64_MIN ? INT64_MIN : std::isnan(value) ? 0 : (GLint64)std::round(value);
+        }
+        return;
+    }
+    if(pname == 0x0B11 || (pname >= 0x8126 && pname <= 0x8129) || (pname >= 0x0C60 && pname <= 0x0C63) || (pname >= 0x891A && pname <= 0x891C) || pname == 0x8CA0 || pname == 0x8861 || pname == 0x803A || pname == 0x81F8 || pname == 0x0B51 || pname == 0x0B52 || pname == 0x0B55 || pname == 0x0B56 || pname == 0x8E4F || pname == 0x8E4C)
+    {
+        GLdouble values[4];
+        int count = LegacyState(pname, values);
+        for(int i = 0; i < count; ++i)
+        {
+            GLdouble value = std::round(values[i]);
+            params[i] = value >= (GLdouble)INT64_MAX ? INT64_MAX : value <= (GLdouble)INT64_MIN ? INT64_MIN : (GLint64)value;
+        }
+        return;
+    }
+    if(pname == 0x8DB9)
+    {
+        GLIN_InitExtensions();
+        *params = globals->gl.framebufferSRGB;
+        return;
+    }
+    glGetInteger64v(pname, params);
+}
+
 void WRAP(glEnable(GLenum cap))
 {
     DLREC(WRAP(glEnable(cap)));
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(cap == 0x803A)
+    {
+        if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+        globals->ff.rescaleNormalEnabled = true;
+        return;
+    }
+    if(cap >= 0x0C60 && cap <= 0x0C63 && (globals->render.begin || globals->ff.activeTextureUnit >= 8)) { SetError(GL_INVALID_OPERATION); return; }
+    if(cap == 0x8DB9)
+    {
+        if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+        GLIN_InitExtensions();
+        if(GLIN_HasExtension("GL_EXT_sRGB_write_control")) glEnable(cap);
+        globals->gl.framebufferSRGB = true;
+        return;
+    }
+    if(cap == 0x8458) { globals->ff.colorSum = true; return; }
 
     switch(cap)
     {
@@ -554,7 +764,9 @@ void WRAP(glEnable(GLenum cap))
             break;
             
         case GL_COLOR_MATERIAL:
+            if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
             globals->render.colorMaterial = true;
+            UpdateColorMaterial();
             break;
 
         case 0x0DE0: //GL_TEXTURE_1D — treat as 2D
@@ -564,13 +776,13 @@ void WRAP(glEnable(GLenum cap))
             break;
 
         case 0x0C60: //GL_TEXTURE_GEN_S
-            globals->ff.texGen[0].enabled = true; break;
+            globals->ff.texGen[globals->ff.activeTextureUnit][0].enabled = true; break;
         case 0x0C61: //GL_TEXTURE_GEN_T
-            globals->ff.texGen[1].enabled = true; break;
+            globals->ff.texGen[globals->ff.activeTextureUnit][1].enabled = true; break;
         case 0x0C62: //GL_TEXTURE_GEN_R
-            globals->ff.texGen[2].enabled = true; break;
+            globals->ff.texGen[globals->ff.activeTextureUnit][2].enabled = true; break;
         case 0x0C63: //GL_TEXTURE_GEN_Q
-            globals->ff.texGen[3].enabled = true; break;
+            globals->ff.texGen[globals->ff.activeTextureUnit][3].enabled = true; break;
 
         case 0x0B24: //GL_LINE_STIPPLE
             globals->ff.lineStippleEnabled = true; break;
@@ -578,7 +790,8 @@ void WRAP(glEnable(GLenum cap))
             globals->ff.polygonStippleEnabled = true; break;
 
         case 0x8861: //GL_POINT_SPRITE
-            glEnable(0x8861); break;
+            if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+            globals->ff.pointSprite = true; break;
 
         default:
             glEnable(cap);
@@ -589,6 +802,24 @@ void WRAP(glEnable(GLenum cap))
 void WRAP(glDisable(GLenum cap))
 {
     DLREC(WRAP(glDisable(cap)));
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(cap == 0x803A)
+    {
+        if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+        globals->ff.rescaleNormalEnabled = false;
+        return;
+    }
+    if(cap >= 0x0C60 && cap <= 0x0C63 && (globals->render.begin || globals->ff.activeTextureUnit >= 8)) { SetError(GL_INVALID_OPERATION); return; }
+    if(cap == 0x8DB9)
+    {
+        if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+        GLIN_InitExtensions();
+        if(!GLIN_HasExtension("GL_EXT_sRGB_write_control")) { SetError(GL_INVALID_OPERATION); return; }
+        glDisable(cap);
+        globals->gl.framebufferSRGB = false;
+        return;
+    }
+    if(cap == 0x8458) { globals->ff.colorSum = false; return; }
 
     switch(cap)
     {
@@ -638,6 +869,7 @@ void WRAP(glDisable(GLenum cap))
             break;
             
         case GL_COLOR_MATERIAL:
+            if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
             globals->render.colorMaterial = false;
             break;
 
@@ -648,13 +880,13 @@ void WRAP(glDisable(GLenum cap))
             break;
 
         case 0x0C60: //GL_TEXTURE_GEN_S
-            globals->ff.texGen[0].enabled = false; break;
+            globals->ff.texGen[globals->ff.activeTextureUnit][0].enabled = false; break;
         case 0x0C61: //GL_TEXTURE_GEN_T
-            globals->ff.texGen[1].enabled = false; break;
+            globals->ff.texGen[globals->ff.activeTextureUnit][1].enabled = false; break;
         case 0x0C62: //GL_TEXTURE_GEN_R
-            globals->ff.texGen[2].enabled = false; break;
+            globals->ff.texGen[globals->ff.activeTextureUnit][2].enabled = false; break;
         case 0x0C63: //GL_TEXTURE_GEN_Q
-            globals->ff.texGen[3].enabled = false; break;
+            globals->ff.texGen[globals->ff.activeTextureUnit][3].enabled = false; break;
 
         case 0x0B24: //GL_LINE_STIPPLE
             globals->ff.lineStippleEnabled = false; break;
@@ -662,7 +894,8 @@ void WRAP(glDisable(GLenum cap))
             globals->ff.polygonStippleEnabled = false; break;
 
         case 0x8861: //GL_POINT_SPRITE
-            glDisable(0x8861); break;
+            if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+            globals->ff.pointSprite = false; break;
 
         default:
             glDisable(cap);
@@ -672,6 +905,22 @@ void WRAP(glDisable(GLenum cap))
 
 GLboolean WRAP(glIsEnabled(GLenum cap))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return GL_FALSE; }
+    if(cap >= 0x0C60 && cap <= 0x0C63 && globals->ff.activeTextureUnit >= 8) { SetError(GL_INVALID_OPERATION); return GL_FALSE; }
+    if(cap == GL_VERTEX_ARRAY || cap == GL_NORMAL_ARRAY || cap == GL_COLOR_ARRAY || cap == GL_TEXTURE_COORD_ARRAY || cap == 0x8457 || cap == 0x845E)
+    {
+        GLint64 value;
+        LegacyArrayState(cap, &value);
+        return value != 0;
+    }
+    if(cap == 0x8DB9)
+    {
+        GLIN_InitExtensions();
+        return globals->gl.framebufferSRGB;
+    }
+    if(cap == 0x8458) return globals->ff.colorSum;
+    if(cap == 0x8861) return globals->ff.pointSprite;
+    if(cap == 0x803A) return globals->ff.rescaleNormalEnabled;
     switch(cap)
     {
         case 0x8F9D: return globals->gl.primitiveRestart;
@@ -711,13 +960,13 @@ GLboolean WRAP(glIsEnabled(GLenum cap))
             return globals->render.colorMaterial;
 
         case 0x0C60: //GL_TEXTURE_GEN_S
-            return globals->ff.texGen[0].enabled;
+            return globals->ff.texGen[globals->ff.activeTextureUnit][0].enabled;
         case 0x0C61: //GL_TEXTURE_GEN_T
-            return globals->ff.texGen[1].enabled;
+            return globals->ff.texGen[globals->ff.activeTextureUnit][1].enabled;
         case 0x0C62: //GL_TEXTURE_GEN_R
-            return globals->ff.texGen[2].enabled;
+            return globals->ff.texGen[globals->ff.activeTextureUnit][2].enabled;
         case 0x0C63: //GL_TEXTURE_GEN_Q
-            return globals->ff.texGen[3].enabled;
+            return globals->ff.texGen[globals->ff.activeTextureUnit][3].enabled;
 
         case 0x0B24: //GL_LINE_STIPPLE
             return globals->ff.lineStippleEnabled;
@@ -731,6 +980,10 @@ GLboolean WRAP(glIsEnabled(GLenum cap))
 
 void WRAP(glGetFloatv(GLenum pname, GLfloat* data))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    GLdouble values[4];
+    int count = LegacyState(pname, values);
+    if(count) { for(int i = 0; i < count; ++i) data[i] = (GLfloat)values[i]; return; }
     if(pname == 0x8F9D || pname == 0x8F9E)
     {
         data[0] = (GLfloat)(pname == 0x8F9D ? globals->gl.primitiveRestart : globals->gl.restartIndex);
@@ -752,7 +1005,7 @@ void WRAP(glGetFloatv(GLenum pname, GLfloat* data))
             break;
         
         case GL_TEXTURE_MATRIX:
-            memcpy(data, globals->matrix.texture.Current().data(), 16 * sizeof(GLfloat));
+            memcpy(data, globals->matrix.Texture().Current().data(), 16 * sizeof(GLfloat));
             break;
 
         case 0x0B00: //GL_CURRENT_COLOR:
@@ -773,10 +1026,8 @@ void WRAP(glGetFloatv(GLenum pname, GLfloat* data))
             break;
 
         case 0x0B03: //GL_CURRENT_TEXTURE_COORDS:
-            data[0] = globals->render.texcoord.x;
-            data[1] = globals->render.texcoord.y;
-            data[2] = 0.0f;
-            data[3] = 1.0f;
+            if(globals->ff.activeTextureUnit >= 8) { SetError(GL_INVALID_OPERATION); return; }
+            memcpy(data, globals->ff.activeTextureUnit ? &globals->render.multiTexcoord[globals->ff.activeTextureUnit-1] : &globals->render.texcoord, 4 * sizeof(float));
             break;
 
         case GL_LIGHT_MODEL_AMBIENT:
@@ -797,10 +1048,7 @@ void WRAP(glGetFloatv(GLenum pname, GLfloat* data))
 
         case 0x0B66: //GL_FOG_COLOR:
             memcpy(data, &globals->ff.fogColor, 4 * sizeof(float));
-            break;
-
-        case 0x1601: //GL_SHININESS:
-            data[0] = globals->ff.matShininess;
+            if(FragmentColorClamped()) for(int i = 0; i < 4; ++i) data[i] = std::min(std::max(data[i], 0.0f), 1.0f);
             break;
 
 
@@ -816,16 +1064,6 @@ void WRAP(glGetFloatv(GLenum pname, GLfloat* data))
         case 0x0B51: /*GL_LIGHT_MODEL_LOCAL_VIEWER*/
             data[0] = globals->ff.lightModelLocalViewer ? 1.0f : 0.0f; return;
 
-        // Material
-        case 0x1200: /*GL_AMBIENT   (front)*/
-            memcpy(data, globals->ff.matAmbient,  4*sizeof(float)); return;
-        case 0x1201: /*GL_DIFFUSE*/
-            memcpy(data, globals->ff.matDiffuse,  4*sizeof(float)); return;
-        case 0x1202: /*GL_SPECULAR*/
-            memcpy(data, globals->ff.matSpecular, 4*sizeof(float)); return;
-        case 0x1600: /*GL_EMISSION*/
-            memcpy(data, globals->ff.matEmission, 4*sizeof(float)); return;
-
         // Point / line
         case 0x0B11: /*GL_POINT_SIZE*/  data[0]=globals->ff.pointSize;  return;
 
@@ -839,6 +1077,8 @@ void WRAP(glGetFloatv(GLenum pname, GLfloat* data))
 
 void WRAP(glGetDoublev(GLenum pname, GLdouble* data))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(LegacyState(pname, data)) return;
     switch(pname)
     {
         case GL_MODELVIEW_MATRIX:
@@ -853,7 +1093,7 @@ void WRAP(glGetDoublev(GLenum pname, GLdouble* data))
         }
         case GL_TEXTURE_MATRIX:
         {
-            const float* m = globals->matrix.texture.Current().m;
+            const float* m = globals->matrix.Texture().Current().m;
             f4tod(m, data, 16); return;
         }
         
@@ -896,6 +1136,7 @@ void WRAP(glAlphaFunc(GLenum func, GLfloat ref))
 void WRAP(glPointSize(GLfloat size))
 {
     DLREC(WRAP(glPointSize(size)));
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
     if(size <= 0) { SetError(GL_INVALID_VALUE); return; }
     globals->ff.pointSize = size;
 }
@@ -965,6 +1206,7 @@ void WRAP(glWindowPos3fv(const GLfloat* v))  { WRAP(glWindowPos3f(v[0],v[1],v[2]
 
 void WRAP(glBitmap(GLsizei width, GLsizei height, GLfloat xorig, GLfloat yorig, GLfloat xmove, GLfloat ymove, const GLubyte* bitmap))
 {
+    if(globals->gl.conditionalDiscard) return;
     // TODO: Render bitmap at raster position via texture quad
     if(globals->render.rasterPosValid)
     {
@@ -991,13 +1233,13 @@ void WRAP(glRectdv(const GLdouble* v1, const GLdouble* v2)) { WRAP(glRectf((floa
 void WRAP(glRectiv(const GLint* v1, const GLint* v2))       { WRAP(glRecti(v1[0],v1[1],v2[0],v2[1])); }
 void WRAP(glRectsv(const GLshort* v1, const GLshort* v2))   { WRAP(glRects(v1[0],v1[1],v2[0],v2[1])); }
 
-void WRAP(glSecondaryColor3f(GLfloat r, GLfloat g, GLfloat b))  { SetError(GL_INVALID_OPERATION); }
+void WRAP(glSecondaryColor3f(GLfloat r, GLfloat g, GLfloat b))  { DLREC(WRAP(glSecondaryColor3f(r,g,b))); globals->render.secondaryColor = {r,g,b}; }
 void WRAP(glSecondaryColor3d(GLdouble r, GLdouble g, GLdouble b)){ WRAP(glSecondaryColor3f((float)r,(float)g,(float)b)); }
 void WRAP(glSecondaryColor3ub(GLubyte r, GLubyte g, GLubyte b))  { WRAP(glSecondaryColor3f(r/255.f,g/255.f,b/255.f)); }
 void WRAP(glSecondaryColor3fv(const GLfloat* v))  { WRAP(glSecondaryColor3f(v[0],v[1],v[2])); }
 void WRAP(glSecondaryColor3dv(const GLdouble* v)) { WRAP(glSecondaryColor3f((float)v[0],(float)v[1],(float)v[2])); }
 
-void WRAP(glFogCoordf(GLfloat coord))  { SetError(GL_INVALID_OPERATION); }
+void WRAP(glFogCoordf(GLfloat coord))  { DLREC(WRAP(glFogCoordf(coord))); globals->render.fogCoord = coord; }
 void WRAP(glFogCoordd(GLdouble coord)) { WRAP(glFogCoordf((float)coord)); }
 void WRAP(glFogCoordfv(const GLfloat* v))  { WRAP(glFogCoordf(v[0])); }
 void WRAP(glFogCoorddv(const GLdouble* v)) { WRAP(glFogCoordf((float)v[0])); }
@@ -1014,7 +1256,7 @@ void WRAP(glHint(GLenum target, GLenum mode))
     }
 }
 
-void WRAP(glAccum(GLenum op, GLfloat value))           { SetError(GL_INVALID_OPERATION); }
+void WRAP(glAccum(GLenum op, GLfloat value))           { if(!globals->gl.conditionalDiscard) SetError(GL_INVALID_OPERATION); }
 void WRAP(glClearAccum(GLfloat r, GLfloat g, GLfloat b, GLfloat a)) { SetError(GL_INVALID_OPERATION); }
 void WRAP(glPassThrough(GLfloat token))                { SetError(GL_INVALID_OPERATION); }
 void WRAP(glSelectBuffer(GLsizei size, GLuint* buffer)) { SetError(GL_INVALID_OPERATION); }
@@ -1033,8 +1275,8 @@ void WRAP(glMapGrid1f(GLint un, GLfloat u1, GLfloat u2)) { SetError(GL_INVALID_O
 void WRAP(glMapGrid1d(GLint un, GLdouble u1, GLdouble u2)) { SetError(GL_INVALID_OPERATION); }
 void WRAP(glMapGrid2f(GLint un, GLfloat u1, GLfloat u2, GLint vn, GLfloat v1, GLfloat v2)) { SetError(GL_INVALID_OPERATION); }
 void WRAP(glMapGrid2d(GLint un, GLdouble u1, GLdouble u2, GLint vn, GLdouble v1, GLdouble v2)) { SetError(GL_INVALID_OPERATION); }
-void WRAP(glEvalMesh1(GLenum mode, GLint i1, GLint i2))  { SetError(GL_INVALID_OPERATION); }
-void WRAP(glEvalMesh2(GLenum mode, GLint i1, GLint i2, GLint j1, GLint j2)) { SetError(GL_INVALID_OPERATION); }
+void WRAP(glEvalMesh1(GLenum mode, GLint i1, GLint i2))  { if(!globals->gl.conditionalDiscard) SetError(GL_INVALID_OPERATION); }
+void WRAP(glEvalMesh2(GLenum mode, GLint i1, GLint i2, GLint j1, GLint j2)) { if(!globals->gl.conditionalDiscard) SetError(GL_INVALID_OPERATION); }
 void WRAP(glEvalPoint1(GLint i))  { SetError(GL_INVALID_OPERATION); }
 void WRAP(glEvalPoint2(GLint i, GLint j)) { SetError(GL_INVALID_OPERATION); }
 void WRAP(glEvalCoord1f(GLfloat u)) { SetError(GL_INVALID_OPERATION); }
@@ -1045,19 +1287,12 @@ void WRAP(glGetMapiv(GLenum target, GLenum query, GLint* v)) { SetError(GL_INVAL
 void WRAP(glGetMapfv(GLenum target, GLenum query, GLfloat* v)) { SetError(GL_INVALID_OPERATION); }
 void WRAP(glGetMapdv(GLenum target, GLenum query, GLdouble* v)) { SetError(GL_INVALID_OPERATION); }
 
-void WRAP(glCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border))
-{
-    // TODO: PC
-    glCopyTexImage2D(target, level, internalformat, x, y, width, height, border);
-}
-void WRAP(glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height))
-{
-    // TODO: PC
-    glCopyTexSubImage2D(target, level, xoffset, yoffset, x, y, width, height);
-}
-
 void WRAP(glGetBooleanv(GLenum pname, GLboolean* params))
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    GLdouble values[4];
+    int count = LegacyState(pname, values);
+    if(count) { for(int i = 0; i < count; ++i) params[i] = values[i] != 0; return; }
     if(pname == 0x8F9D || pname == 0x8F9E)
     {
         params[0] = (GLboolean)((pname == 0x8F9D ? globals->gl.primitiveRestart : globals->gl.restartIndex) != 0);
@@ -1086,10 +1321,11 @@ void WRAP(glGetBooleanv(GLenum pname, GLboolean* params))
     }
 }
 
-void WRAP(glGetLightfv(GLenum light, GLenum pname, GLfloat* params))
+static int GetLight(GLenum light, GLenum pname, GLfloat* params)
 {
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return 0; }
     int idx = (int)(light - GL_LIGHT0);
-    if(idx < 0 || idx > 7) return;
+    if(idx < 0 || idx > 7 || pname < GL_AMBIENT || pname > GL_QUADRATIC_ATTENUATION) { SetError(GL_INVALID_ENUM); return 0; }
     const fixed_light_t& L = globals->ff.lights[idx];
     switch(pname)
     {
@@ -1105,30 +1341,59 @@ void WRAP(glGetLightfv(GLenum light, GLenum pname, GLfloat* params))
         case 0x1209: params[0] = L.attenuationQuad;   break;              // GL_QUADRATIC_ATTENUATION
         default: break;
     }
+    return pname == GL_SPOT_DIRECTION ? 3 : pname <= GL_POSITION ? 4 : 1;
+}
+
+void WRAP(glGetLightfv(GLenum light, GLenum pname, GLfloat* params))
+{
+    GetLight(light, pname, params);
 }
 void WRAP(glGetLightiv(GLenum light, GLenum pname, GLint* params))
 {
-    GLfloat tmp[4] = {};
-    WRAP(glGetLightfv(light, pname, tmp));
-    for(int i = 0; i < (pname == GL_SPOT_DIRECTION ? 3 : pname >= GL_AMBIENT && pname <= GL_POSITION ? 4 : 1); ++i) params[i] = (GLint)tmp[i];
+    GLfloat values[4];
+    int count = GetLight(light, pname, values);
+    for(int i = 0; i < count; ++i)
+    {
+        GLdouble value = values[i];
+        if(pname >= GL_AMBIENT && pname <= GL_SPECULAR) value *= value < 0 ? 2147483648.0 : 2147483647.0;
+        value = std::round(value);
+        params[i] = value >= INT32_MAX ? INT32_MAX : value <= INT32_MIN ? INT32_MIN : std::isnan(value) ? 0 : (GLint)value;
+    }
+}
+
+static int GetMaterial(GLenum face, GLenum pname, GLfloat* params)
+{
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return 0; }
+    if(face != GL_FRONT && face != GL_BACK) { SetError(GL_INVALID_ENUM); return 0; }
+    const auto& material = globals->ff.materials[face == GL_BACK ? 1 : 0];
+    switch(pname)
+    {
+        case GL_AMBIENT: memcpy(params, material.ambient, 4*sizeof(float)); return 4;
+        case GL_DIFFUSE: memcpy(params, material.diffuse, 4*sizeof(float)); return 4;
+        case GL_SPECULAR: memcpy(params, material.specular, 4*sizeof(float)); return 4;
+        case GL_EMISSION: memcpy(params, material.emission, 4*sizeof(float)); return 4;
+        case GL_SHININESS: params[0] = material.shininess; return 1;
+        case 0x1603: memcpy(params, material.indexes, 3*sizeof(float)); return 3;
+        default: SetError(GL_INVALID_ENUM); return 0;
+    }
 }
 
 void WRAP(glGetMaterialfv(GLenum face, GLenum pname, GLfloat* params))
 {
-    switch(pname)
-    {
-        case 0x1200: memcpy(params, globals->ff.matAmbient,  4*sizeof(float)); break;
-        case 0x1201: memcpy(params, globals->ff.matDiffuse,  4*sizeof(float)); break;
-        case 0x1202: memcpy(params, globals->ff.matSpecular, 4*sizeof(float)); break;
-        case 0x1600: memcpy(params, globals->ff.matEmission, 4*sizeof(float)); break;
-        case 0x1601: params[0] = globals->ff.matShininess;   break;
-        default: break;
-    }
+    GetMaterial(face, pname, params);
 }
+
 void WRAP(glGetMaterialiv(GLenum face, GLenum pname, GLint* params))
 {
-    GLfloat tmp[4] = {}; WRAP(glGetMaterialfv(face, pname, tmp));
-    for(int i = 0; i < (pname == GL_SHININESS ? 1 : 4); ++i) params[i] = (GLint)tmp[i];
+    GLfloat values[4];
+    int count = GetMaterial(face, pname, values);
+    for(int i = 0; i < count; ++i)
+    {
+        GLdouble value = values[i];
+        if(count == 4) value *= value < 0 ? 2147483648.0 : 2147483647.0;
+        value = std::round(value);
+        params[i] = value >= INT32_MAX ? INT32_MAX : value <= INT32_MIN ? INT32_MIN : std::isnan(value) ? 0 : (GLint)value;
+    }
 }
 
 void WRAP(glGetClipPlane(GLenum plane, GLdouble* equation))
@@ -1141,46 +1406,70 @@ void WRAP(glGetClipPlane(GLenum plane, GLdouble* equation))
     equation[3] = globals->ff.clipPlanes[idx][3];
 }
 
-void WRAP(glGetTexEnvfv(GLenum target, GLenum pname, GLfloat* params))
+static bool GetTextureEnv(GLenum target, GLenum pname, GLfloat* params)
 {
-    if(target != GL_TEXTURE_ENV) return;
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return false; }
     int unit = globals->ff.activeTextureUnit;
-    if(unit >= 8) { SetError(GL_INVALID_OPERATION); return; }
-    const texcoord_state_t& ts = globals->client.texCoord[unit];
+    if(unit >= 8) { SetError(GL_INVALID_OPERATION); return false; }
+    if(target == 0x8861 && pname == 0x8862) { *params = globals->ff.pointCoordReplace[unit]; return true; }
+    if(target != GL_TEXTURE_ENV) { SetError(GL_INVALID_ENUM); return false; }
+    const auto& ts = globals->ff.texEnv[unit];
     if(pname == GL_TEXTURE_ENV_MODE)
     {
-        static const GLenum modes[] = { GL_REPLACE, GL_MODULATE, GL_ADD, GL_BLEND, GL_DECAL };
-        params[0] = (ts.texCoordBlendLogic < 5) ? (float)modes[ts.texCoordBlendLogic] : (float)GL_MODULATE;
+        params[0] = (float)ts.mode;
     }
     else if(pname == GL_TEXTURE_ENV_COLOR)
     {
-        params[0]=ts.texCoordColor.x; params[1]=ts.texCoordColor.y;
-        params[2]=ts.texCoordColor.z; params[3]=ts.texCoordColor.w;
+        memcpy(params, &ts.color, 4 * sizeof(float));
+        if(FragmentColorClamped()) for(int i = 0; i < 4; ++i) params[i] = std::min(std::max(params[i], 0.0f), 1.0f);
     }
+    else if(pname == 0x8571) params[0] = (float)ts.combineRGB;
+    else if(pname == 0x8572) params[0] = (float)ts.combineAlpha;
+    else if(pname == 0x8573) params[0] = (float)ts.scaleRGB;
+    else if(pname == 0x0D1C) params[0] = (float)ts.scaleAlpha;
+    else if(pname >= 0x8580 && pname <= 0x8582) params[0] = (float)ts.sourceRGB[pname-0x8580];
+    else if(pname >= 0x8588 && pname <= 0x858A) params[0] = (float)ts.sourceAlpha[pname-0x8588];
+    else if(pname >= 0x8590 && pname <= 0x8592) params[0] = (float)ts.operandRGB[pname-0x8590];
+    else if(pname >= 0x8598 && pname <= 0x859A) params[0] = (float)ts.operandAlpha[pname-0x8598];
+    else { SetError(GL_INVALID_ENUM); return false; }
+    return true;
 }
+void WRAP(glGetTexEnvfv(GLenum target, GLenum pname, GLfloat* params)) { GetTextureEnv(target, pname, params); }
 void WRAP(glGetTexEnviv(GLenum target, GLenum pname, GLint* params))
 {
-    GLfloat tmp[4] = {}; WRAP(glGetTexEnvfv(target, pname, tmp));
-    for(int i=0;i<(pname == GL_TEXTURE_ENV_COLOR ? 4 : 1);++i) params[i]=(GLint)tmp[i];
+    GLfloat tmp[4];
+    if(!GetTextureEnv(target, pname, tmp)) return;
+    for(int i = 0; i < (pname == GL_TEXTURE_ENV_COLOR ? 4 : 1); ++i)
+    {
+        double value = pname == GL_TEXTURE_ENV_COLOR ? (double)tmp[i] * (tmp[i] < 0 ? 2147483648.0 : 2147483647.0) : tmp[i];
+        value = std::round(value);
+        params[i] = std::isnan(value) ? 0 : value >= INT32_MAX ? INT32_MAX : value <= INT32_MIN ? INT32_MIN : (GLint)value;
+    }
 }
 
-void WRAP(glGetTexGenfv(GLenum coord, GLenum pname, GLfloat* params))
+static bool GetTextureGen(GLenum coord, GLenum pname, GLfloat* params)
 {
+    if(globals->render.begin || globals->ff.activeTextureUnit >= 8) { SetError(GL_INVALID_OPERATION); return false; }
     int c = (int)(coord - GL_S);
-    if(c < 0 || c > 3) return;
-    const auto& tg = globals->ff.texGen[c];
+    if(c < 0 || c > 3) { SetError(GL_INVALID_ENUM); return false; }
+    const auto& tg = globals->ff.texGen[globals->ff.activeTextureUnit][c];
     if(pname == GL_TEXTURE_GEN_MODE)   { params[0] = (float)tg.mode; }
     else if(pname == GL_OBJECT_PLANE)  { memcpy(params, tg.objectPlane, 4*sizeof(float)); }
     else if(pname == GL_EYE_PLANE)     { memcpy(params, tg.eyePlane,    4*sizeof(float)); }
+    else { SetError(GL_INVALID_ENUM); return false; }
+    return true;
 }
+void WRAP(glGetTexGenfv(GLenum coord, GLenum pname, GLfloat* params)) { GetTextureGen(coord,pname,params); }
 void WRAP(glGetTexGendv(GLenum coord, GLenum pname, GLdouble* params))
 {
-    GLfloat tmp[4] = {}; WRAP(glGetTexGenfv(coord, pname, tmp));
+    GLfloat tmp[4];
+    if(!GetTextureGen(coord,pname,tmp)) return;
     f4tod(tmp, params, pname == GL_TEXTURE_GEN_MODE ? 1 : 4);
 }
 void WRAP(glGetTexGeniv(GLenum coord, GLenum pname, GLint* params))
 {
-    GLfloat tmp[4] = {}; WRAP(glGetTexGenfv(coord, pname, tmp));
+    GLfloat tmp[4];
+    if(!GetTextureGen(coord,pname,tmp)) return;
     for(int i=0;i<(pname == GL_TEXTURE_GEN_MODE ? 1 : 4);++i) params[i]=(GLint)tmp[i];
 }
 
@@ -1201,24 +1490,30 @@ void WRAP(glTexSubImage1D(GLenum target, GLint level, GLint xoffset,
 void WRAP(glCopyTexImage1D(GLenum target, GLint level, GLenum internalformat,
                            GLint x, GLint y, GLsizei width, GLint border))
 {
-    glCopyTexImage2D(GL_TEXTURE_2D, level, internalformat, x, y, width, 1, border);
+    WRAP(glCopyTexImage2D(GL_TEXTURE_2D, level, internalformat, x, y, width, 1, border));
 }
 
 void WRAP(glCopyTexSubImage1D(GLenum target, GLint level, GLint xoffset,
                               GLint x, GLint y, GLsizei width))
 {
-    glCopyTexSubImage2D(GL_TEXTURE_2D, level, xoffset, 0, x, y, width, 1);
+    WRAP(glCopyTexSubImage2D(GL_TEXTURE_2D, level, xoffset, 0, x, y, width, 1));
 }
 
 void WRAP(glFramebufferTexture1D(GLenum target, GLenum attachment,
                                  GLenum textarget, GLuint texture, GLint level))
 {
-    glFramebufferTextureLayer(target, attachment, texture, level, 0);
+    if(textarget != 0x0DE0) { SetError(GL_INVALID_ENUM); return; }
+    WRAP(glFramebufferTexture2D(target, attachment, GL_TEXTURE_2D, texture, level));
 }
 
 void WRAP(glClampColor(GLenum target, GLenum clamp))
 {
-    DBG("glClampColor(0x%X, 0x%X) — no-op on GLES", target, clamp);
+    DLREC(WRAP(glClampColor(target, clamp)));
+    if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(target < 0x891A || target > 0x891C || (clamp != GL_TRUE && clamp != GL_FALSE && clamp != 0x891D)) { SetError(GL_INVALID_ENUM); return; }
+    if(target == 0x891A) globals->ff.clampVertexColor = clamp;
+    else if(target == 0x891B) globals->ff.clampFragmentColor = clamp;
+    else globals->ff.clampReadColor = clamp;
 }
 
 void WRAP(glPrioritizeTextures(GLsizei n, const GLuint* textures, const GLclampf* priorities))

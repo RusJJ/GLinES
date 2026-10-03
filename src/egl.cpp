@@ -149,6 +149,7 @@ GLINAPI EGLBoolean EXPORT eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSur
             currentState = state;
         }
         globals = currentState ? currentState.get() : &globalsLocal;
+        if(currentState) GLIN_InitExtensions();
     }
     return result;
 }

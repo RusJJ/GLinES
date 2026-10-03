@@ -1,5 +1,13 @@
 #include "GLES.h"
 
+void WRAP(glCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border));
+void WRAP(glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height));
+
+void WRAP(glCompressedTexImage1D(GLenum target, GLint level, GLenum format, GLsizei width, GLint border, GLsizei imageSize, const void* data));
+void WRAP(glCompressedTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void* data));
+void WRAP(glGetTexLevelParameteriv(GLenum target, GLint level, GLenum pname, GLint* params));
+void WRAP(glGetTexLevelParameterfv(GLenum target, GLint level, GLenum pname, GLfloat* params));
+
 void WRAP(glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void* data));
 
 void WRAP(glGenTextures(GLsizei n, GLuint * textures));
@@ -23,3 +31,8 @@ void WRAP(glTexParameteriv(GLenum target, GLenum pname, const GLint* values));
 void WRAP(glTexParameterfv(GLenum target, GLenum pname, const GLfloat* values));
 void WRAP(glGetTexParameteriv(GLenum target, GLenum pname, GLint* values));
 void WRAP(glGetTexParameterfv(GLenum target, GLenum pname, GLfloat* values));
+void WRAP(glGenerateMipmap(GLenum target));
+void WRAP(glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels));
+void WRAP(glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level));
+void WRAP(glFramebufferTexture(GLenum target, GLenum attachment, GLuint texture, GLint level));
+void WRAP(glFramebufferTextureLayer(GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer));
