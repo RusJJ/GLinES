@@ -521,6 +521,10 @@ static bool LegacyArrayState(GLenum pname, GLint64* value)
 
 static int LegacyState(GLenum pname, GLdouble* values)
 {
+    if(pname == GL_MAJOR_VERSION || pname == GL_MINOR_VERSION) { *values = 3; return 1; }
+    if(pname == GL_MAJOR_VERSION || pname == GL_MINOR_VERSION) { *values = 3; return 1; }
+    if(pname == 0x9126) { *values = globals->contextProfile; return 1; }
+    if(pname == 0x821E) { *values = globals->contextFlags; return 1; }
     GLint64 value;
     if(LegacyArrayState(pname, &value)) { *values = (GLdouble)value; return 1; }
     switch(pname)
@@ -663,6 +667,13 @@ void WRAP(glGetIntegerv(GLenum pname, GLint* params))
 void WRAP(glGetInteger64v(GLenum pname, GLint64* params))
 {
     if(globals->render.begin) { SetError(GL_INVALID_OPERATION); return; }
+    if(pname == GL_MAJOR_VERSION || pname == GL_MINOR_VERSION || pname == 0x9126 || pname == 0x821E)
+    {
+        GLdouble value;
+        LegacyState(pname, &value);
+        *params = (GLint64)value;
+        return;
+    }
     if(LegacyArrayState(pname, params)) return;
     if(pname == GL_COLOR_CLEAR_VALUE)
     {

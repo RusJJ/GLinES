@@ -25,5 +25,6 @@ LOCAL_SRC_FILES := \
 	thirdparty/DXTn.c
 
 LOCAL_CPPFLAGS := -std=c++14 -Wall -Wextra -Werror=c++17-extensions
+LOCAL_LDFLAGS := -Wl,-Bsymbolic-functions
 LOCAL_LDLIBS := -llog -ldl -lGLESv3
 include $(BUILD_SHARED_LIBRARY)

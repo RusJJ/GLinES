@@ -645,6 +645,8 @@ struct glin_globals_t
     GLuint currentList = 0;
     unsigned int listDepth = 0;
     GLenum error = GL_NO_ERROR;
+    GLint contextProfile = 2;
+    GLint contextFlags = 0;
     GLenum currentListMode = 0;
 
     extensions_t ext;
