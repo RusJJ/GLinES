@@ -436,7 +436,10 @@ GLINAPI EGLBoolean EXPORT eglBindAPI(EGLenum api)
     return result;
 }
 
-GLINAPI EGLenum EXPORT eglQueryAPI(void) { return currentAPI; }
+GLINAPI EGLenum EXPORT eglQueryAPI(void)
+{
+    return currentAPI;
+}
 
 GLINAPI EGLBoolean EXPORT eglGetConfigAttrib(EGLDisplay dpy, EGLConfig config, EGLint attribute, EGLint* value)
 {
@@ -511,7 +514,12 @@ GLINAPI EGLContext EXPORT eglCreateContext(EGLDisplay dpy, EGLConfig config, EGL
         EGLError(EGL_BAD_CONTEXT);
         return EGL_NO_CONTEXT;
     }
-    if(shared != contexts.end() && (shared->second->api != currentAPI || shared->second->display != dpy))
+    if(shared != contexts.end() && shared->second->api != currentAPI)
+    {
+        EGLError(EGL_BAD_CONTEXT);
+        return EGL_NO_CONTEXT;
+    }
+    if(shared != contexts.end() && shared->second->display != dpy)
     {
         EGLError(EGL_BAD_MATCH);
         return EGL_NO_CONTEXT;
@@ -602,7 +610,7 @@ GLINAPI EGLContext EXPORT eglCreateContext(EGLDisplay dpy, EGLConfig config, EGL
             }
             if(profile != EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT && profile != EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT)
             {
-                EGLError(EGL_BAD_ATTRIBUTE);
+                EGLError(EGL_BAD_MATCH);
                 return EGL_NO_CONTEXT;
             }
         }
@@ -698,12 +706,6 @@ GLINAPI EGLBoolean EXPORT eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSur
     (void)eglThread;
     {
         std::lock_guard<std::mutex> lock(contextMutex);
-        auto selected = contexts.find(ctx);
-        if(selected != contexts.end() && selected->second->api != currentAPI)
-        {
-            EGLError(EGL_BAD_MATCH);
-            return EGL_FALSE;
-        }
         static auto fn = (decltype(&eglMakeCurrent))EGLProc("eglMakeCurrent");
         EGLBoolean result = EGLCall(fn, EGL_FALSE, dpy, draw, read, ctx);
         if(!result)
@@ -745,6 +747,7 @@ GLINAPI EGLBoolean EXPORT eglReleaseThread(void)
     std::lock_guard<std::mutex> lock(contextMutex);
     ReleaseContext();
     currentAPI = EGL_OPENGL_ES_API;
+    eglError = EGL_SUCCESS;
     return EGL_TRUE;
 }
 
